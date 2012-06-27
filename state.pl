@@ -5,6 +5,12 @@
 # perl state.pl cached-descriptors 128.31.0.34:9101 76.73.17.194
 # perl state.pl cached-descriptors 128.31.0.34:9101 76.73.17.194:9090
 
+# perl state.pl cached-descriptors cached-descriptors.new 128.31.0.34 76.73.17.194
+# perl state.pl cached-descriptors 128.31.0.34 cached-descriptors.new  76.73.17.194
+# perl state.pl 128.31.0.34 cached-descriptors 76.73.17.194 cached-descriptors.new
+# perl state.pl 128.31.0.34 76.73.17.194 cached-descriptors cached-descriptors.new
+
+
 use strict;
 use warnings;
 use POSIX qw(mktime strftime);
@@ -17,72 +23,82 @@ if(1>scalar(@ARGV))
  }
 else
  {
-  if(!open(FILE,$ARGV[0]))
-   {warn('Can NOT open file: '.$ARGV[0]);
-   }
-  else
+  my $i=0;
+  my @files;
+  my %ip;
+  for($_=0;$_<scalar(@ARGV);$_++)
    {
-    my %ip;
-    for($_=1;$_<scalar(@ARGV);$_++)
-     {
-      if($ARGV[$_] !~ /^([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})(:([0-9]{1,5})){0,1}$/)
-       {
-        warn('Unknown IP: '.$ARGV[$_]);
+    if($ARGV[$_] !~ /^([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})(:([0-9]{1,5})){0,1}$/)
+     {if(!open($files[$i],'<',$ARGV[$_]))
+       {warn('Can NOT open file: '.$ARGV[$_]);
         exit();
        }
       else
-       {if(defined($6))
-         {$ip{$1.'.'.$2.'.'.$3.'.'.$4.':'.$6}=0;
-         }
-        else
-         {$ip{$1.'.'.$2.'.'.$3.'.'.$4}=0;
-         }
+       {$i++;
        }
      }
-    while(<FILE>)
+    else
+     {if(defined($6))
+       {$ip{$1.'.'.$2.'.'.$3.'.'.$4.':'.$6}=0;
+       }
+      else
+       {$ip{$1.'.'.$2.'.'.$3.'.'.$4}=0;
+       }
+     }
+   }
+  if(1>scalar(@files))
+   {warn('NO file defined!');
+    exit();
+   }
+  else
+   {
+    for($i=0;$i<scalar(@files);$i++)
      {
-      if($_ =~ /^router /)
+      while(readline($files[$i]))
        {
-        if($_ !~ /^router ([^ ]{1,}) ([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3}) ([0-9]{1,}) [0-9]{1,} [0-9]{1,}$/)
-         {warn('Unknown router: ');
-          exit();
-         }
-        else
+        if($_ =~ /^router /)
          {
-          if(0 == $6)
-           {warn('0==ORPort');
+          if($_ !~ /^router ([^ ]{1,}) ([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3}) ([0-9]{1,}) [0-9]{1,} [0-9]{1,}$/)
+           {warn('Unknown router: ');
             exit();
            }
           else
            {
-            my $ORPort=$2.'.'.$3.'.'.$4.'.'.$5.':'.$6;
-            if(0==scalar(keys(%ip)) || exists($ip{$2.'.'.$3.'.'.$4.'.'.$5}) || exists($ip{$2.'.'.$3.'.'.$4.'.'.$5.':'.$6}))
-             {my $nickname=$1;
-              $_ = <FILE>;
-              if($_ !~ /^platform Tor ([0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}).*on .*$/)
-               {warn('Unknown platform: '.$_);
-                exit();
-               }
-              else
-               {my $torVer=$1;
-                $_ = <FILE>;
-                $_ = <FILE>;
-                if($_ !~ /^published ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
-                 {warn('Unknown published: ');
+            if(0 == $6)
+             {warn('0==ORPort');
+              exit();
+             }
+            else
+             {
+              my $ORPort=$2.'.'.$3.'.'.$4.'.'.$5.':'.$6;
+              if(0==scalar(keys(%ip)) || exists($ip{$2.'.'.$3.'.'.$4.'.'.$5}) || exists($ip{$2.'.'.$3.'.'.$4.'.'.$5.':'.$6}))
+               {my $nickname=$1;
+                $_=readline($files[$i]);
+                if($_ !~ /^platform Tor ([0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}).*on .*$/)
+                 {warn('Unknown platform: '.$_);
                   exit();
                  }
                 else
-                 {my $published=POSIX::mktime($6,$5,$4,$3,$2-1,$1-1900,0,0,-1);
-                  $published+=$timezone;
-                  $published=POSIX::strftime('%Y-%m-%d %H:%M:%S',gmtime( $published ));
-                  $_ = <FILE>;
-                  if($_ !~ /^opt fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})$/)
-                   {warn('Unknown fingerprint: ');
+                 {my $torVer=$1;
+                  readline($files[$i]);
+                  $_=readline($files[$i]);
+                  if($_ !~ /^published ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
+                   {warn('Unknown published: '.$_);
                     exit();
                    }
                   else
-                   {my $fingerprint=$1.$2.$3.$4.$5.$6.$7.$8.$9.$10;
-                    print('EntryGuard '.$nickname.' '.$fingerprint.' # '.$ORPort."\n".'EntryGuardAddedBy '.$fingerprint.' '.$torVer.' '.$published."\n");
+                   {my $published=POSIX::mktime($6,$5,$4,$3,$2-1,$1-1900,0,0,-1);
+                    $published+=$timezone;
+                    $published=POSIX::strftime('%Y-%m-%d %H:%M:%S',gmtime( $published ));
+                    $_=readline($files[$i]);
+                    if($_ !~ /^opt fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})$/)
+                     {warn('Unknown fingerprint: '.$_);
+                      exit();
+                     }
+                    else
+                     {my $fingerprint=$1.$2.$3.$4.$5.$6.$7.$8.$9.$10;
+                      print('EntryGuard '.$nickname.' '.$fingerprint.' # '.$ORPort."\n".'EntryGuardAddedBy '.$fingerprint.' '.$torVer.' '.$published."\n");
+                     }
                    }
                  }
                }
@@ -90,7 +106,7 @@ else
            }
          }
        }
+      close($files[$i]);
      }
-    close(FILE);
    }
  }
