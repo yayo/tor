@@ -12,6 +12,9 @@
 
 # perl state.pl old cached-descriptors
 
+# echo grep -B4 $(sed -ne 's/^EntryGuard [^ ]* \([0-9A-F]\{4\}\)\([0-9A-F]\{4\}\)\([0-9A-F]\{4\}\)\([0-9A-F]\{4\}\)\([0-9A-F]\{4\}\)\([0-9A-F]\{4\}\)\([0-9A-F]\{4\}\)\([0-9A-F]\{4\}\)\([0-9A-F]\{4\}\)\([0-9A-F]\{4\}\)$/-e "^opt fingerprint \1 \2 \3 \4 \5 \6 \7 \8 \9" /p' state | tr -d '\n') cached-descriptors cached-descriptors.new | sh | sed -ne 's/^cached-descriptors\([.]new\)\{0,1\}-router [^ ]\{1,\} \([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\) \([0-9]\{1,5\}\) [0-9]\{1,5\} [0-9]\{1,5\}$/nc -w 1 \2.\3.\4.\5 \6 -e cat/p'
+# sed -ne 's/^router [^ ]\{1,\} \([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\) \([0-9]\{1,5\}\) [0-9]\{1,5\} [0-9]\{1,5\}$/\1.\2.\3.\4 \5/p' cached-descriptors cached-descriptors.new | sort | uniq | while read LINE ; do echo -n | nc -w 1 ${LINE} 2> /dev/null ; if [ 0 -eq $? ] ; then echo ${LINE} ; fi ; done
+
 use strict;
 use warnings;
 use POSIX qw(mktime strftime);
