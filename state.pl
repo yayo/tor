@@ -10,6 +10,7 @@
 # perl state.pl 128.31.0.34 cached-descriptors 76.73.17.194 cached-descriptors.new
 # perl state.pl 128.31.0.34 76.73.17.194 cached-descriptors cached-descriptors.new
 
+# perl state.pl old cached-descriptors
 
 use strict;
 use warnings;
@@ -23,12 +24,16 @@ if(1>scalar(@ARGV))
  }
 else
  {
+  my $old=0;
   my $i=0;
   my @files;
   my %ip;
   for($_=0;$_<scalar(@ARGV);$_++)
    {
-    if($ARGV[$_] !~ /^([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})(:([0-9]{1,5})){0,1}$/)
+    if($ARGV[$_] eq 'old')
+     {$old=1;
+     }
+    elsif($ARGV[$_] !~ /^([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})(:([0-9]{1,5})){0,1}$/)
      {if(!open($files[$i],'<',$ARGV[$_]))
        {warn('Can NOT open file: '.$ARGV[$_]);
         exit();
@@ -87,9 +92,16 @@ else
                     exit();
                    }
                   else
-                   {my $published=POSIX::mktime($6,$5,$4,$3,$2-1,$1-1900,0,0,-1);
-                    $published+=$timezone;
-                    $published=POSIX::strftime('%Y-%m-%d %H:%M:%S',gmtime( $published ));
+                   {my $published;
+                    if(0!=$old)
+                     {$published=POSIX::mktime($6,$5,$4,$3,$2-1,$1-1900,0,0,-1);
+                      $published+=$timezone;
+                      @_=gmtime($published);
+                     }
+                    else
+                     {@_=gmtime();
+                     }
+                    $published=POSIX::strftime('%Y-%m-%d %H:%M:%S',@_);
                     $_=readline($files[$i]);
                     if($_ !~ /^opt fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})$/)
                      {warn('Unknown fingerprint: '.$_);
