@@ -46,11 +46,17 @@ else
        }
      }
     else
-     {if(defined($6))
-       {$ip{$1.'.'.$2.'.'.$3.'.'.$4.':'.$6}=0;
+     {if(!defined($6))
+       {$ip{$1.'.'.$2.'.'.$3.'.'.$4}=0;
        }
       else
-       {$ip{$1.'.'.$2.'.'.$3.'.'.$4}=0;
+       {if(0==$6)
+         {warn('0==Port');
+          exit();
+         }
+        else
+         {$ip{$1.'.'.$2.'.'.$3.'.'.$4.':'.$6}=0;
+         }
        }
      }
    }
@@ -95,24 +101,24 @@ else
                     exit();
                    }
                   else
-                   {my $published;
-                    if(0!=$old)
-                     {$published=POSIX::mktime($6,$5,$4,$3,$2-1,$1-1900,0,0,-1);
-                      $published+=$timezone;
-                      @_=gmtime($published);
-                     }
-                    else
-                     {@_=gmtime();
-                     }
-                    $published=POSIX::strftime('%Y-%m-%d %H:%M:%S',@_);
-                    $_=readline($files[$i]);
-                    if($_ !~ /^opt fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})$/)
-                     {warn('Unknown fingerprint: '.$_);
+                   {my $published=POSIX::strftime('%Y-%m-%d %H:%M:%S',gmtime(POSIX::mktime($6,$5,$4,$3,$2-1,$1-1900,0,0,-1)+$timezone));
+                    if($1.'-'.$2.'-'.$3.' '.$4.':'.$5.':'.$6 ne $published)
+                     {warn('Unknown published time: '.$_);
                       exit();
                      }
                     else
-                     {my $fingerprint=$1.$2.$3.$4.$5.$6.$7.$8.$9.$10;
-                      print('EntryGuard '.$nickname.' '.$fingerprint.' # '.$ORPort."\n".'EntryGuardAddedBy '.$fingerprint.' '.$torVer.' '.$published."\n");
+                     {if(0==$old)
+                       {$published=POSIX::strftime('%Y-%m-%d %H:%M:%S',gmtime());
+                       }
+                      $_=readline($files[$i]);
+                      if($_ !~ /^opt fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})$/)
+                       {warn('Unknown fingerprint: '.$_);
+                        exit();
+                       }
+                      else
+                       {my $fingerprint=$1.$2.$3.$4.$5.$6.$7.$8.$9.$10;
+                        print('EntryGuard '.$nickname.' '.$fingerprint.' # '.$ORPort."\n".'EntryGuardAddedBy '.$fingerprint.' '.$torVer.' '.$published."\n");
+                       }
                      }
                    }
                  }
