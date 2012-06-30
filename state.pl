@@ -19,10 +19,18 @@ use strict;
 use warnings;
 use POSIX qw(mktime strftime);
 
-#use Sys::Mmap;
-use File::Map;
-
 my $timezone=28800;
+
+sub parse($)
+ {
+  if($_[0] !~ /^\@downloaded-at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\n\@source "[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}"\nrouter ([^ ]{1,}) ([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3}) ([0-9]{1,}) [0-9]{1,} [0-9]{1,}\nplatform Tor ([0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}[.][0-9]{1,})(-alpha|-beta|-alpha-dev|-beta-dev|-rc|-dev){0,1} (\(git-[0-9a-f]{16}\) ){0,1}on (Windows|Linux|FreeBSD|OpenBSD|NetBSD|SunOS|Darwin|DragonFly|Very recent version of Windows)[^\n]{0,}\nopt protocols Link 1 2 Circuit 1\npublished ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})\nopt fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})\nuptime [0-9]{1,9}\nbandwidth [0-9]{1,10} [0-9]{1,10} [0-9]{1,10}\n(opt extra-info-digest [0-9A-F]{40}\n){0,1}(opt caches-extra-info\n){0,1}onion-key\n-----BEGIN RSA PUBLIC KEY-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{59}=\n-----END RSA PUBLIC KEY-----\nsigning-key\n-----BEGIN RSA PUBLIC KEY-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{59}=\n-----END RSA PUBLIC KEY-----\nopt hidden-service-dir\n/)
+   {warn('UnKnown router:'."\n".$_[0]);
+    exit();
+   }
+  else
+   {
+   }
+ }
 
 if(1>scalar(@ARGV))
  {warn('Usage: state.pl cached-descriptors');
@@ -68,117 +76,29 @@ else
     exit();
    }
   else
-   {
-    for($i=0;$i<scalar(@files);$i++)
-     {
-      while(readline($files[$i]))
-       {
-        if($_ =~ /^\@downloaded-at /)
-         {
-          if($_ !~ /^\@downloaded-at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
-           {warn('UnKnown @downloaded-at: ');
-            exit();
+   {for($i=0;$i<scalar(@files);$i++)
+     {$_=readline($files[$i]);
+      if($_ !~ /^\@downloaded-at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
+       {warn('UnKnown LINE1: '.$_);
+        exit();
+       }
+      else
+       {while(my $line=readline($files[$i]))
+         {if($line !~ /^\@downloaded-at /)
+           {$_.=$line;
            }
           else
-           {$_=readline($files[$i]);
-            if($_ !~ /^\@source "([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})"$/)
-             {warn('UnKnown @source: ');
+           {if($line !~ /^\@downloaded-at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
+             {warn('UnKnown @downloaded-at: '.$line);
               exit();
              }
             else
-             {$_=readline($files[$i]);              
-              if($_ !~ /^router ([^ ]{1,}) ([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3}) ([0-9]{1,}) [0-9]{1,} [0-9]{1,}$/)
-               {warn('UnKnown router: ');
-                exit();
-               }
-              else
-               {
-                if(0 == $6)
-                 {warn('0==ORPort');
-                  exit();
-                 }
-                else
-                 {
-                  my $ORPort=$2.'.'.$3.'.'.$4.'.'.$5.':'.$6;
-                  if(0==scalar(keys(%ip)) || exists($ip{$2.'.'.$3.'.'.$4.'.'.$5}) || exists($ip{$2.'.'.$3.'.'.$4.'.'.$5.':'.$6}))
-                   {my $nickname=$1;
-                    $_=readline($files[$i]);
-                    if($_ !~ /^platform Tor ([0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}).*on .*$/)
-                     {warn('UnKnown platform: '.$_);
-                      exit();
-                     }
-                    else
-                     {my $torVer=$1;
-                      $_=readline($files[$i]);
-                      if($_ !~ /^opt protocols Link 1 2 Circuit 1$/)
-                       {warn('UnKnown opt protocols: '.$_);
-                        exit();
-                       }
-                      else
-                       {$_=readline($files[$i]);
-                        if($_ !~ /^published ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
-                         {warn('UnKnown published: '.$_);
-                          exit();
-                         }
-                        else
-                         {my $published=POSIX::strftime('%Y-%m-%d %H:%M:%S',gmtime(POSIX::mktime($6,$5,$4,$3,$2-1,$1-1900,0,0,-1)+$timezone));
-                          if($1.'-'.$2.'-'.$3.' '.$4.':'.$5.':'.$6 ne $published)
-                           {warn('UnKnown published time: '.$_);
-                            exit();
-                           }
-                          else
-                           {if(0==$old)
-                             {$published=POSIX::strftime('%Y-%m-%d %H:%M:%S',gmtime());
-                             }
-                            $_=readline($files[$i]);
-                            if($_ !~ /^opt fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})$/)
-                             {warn('UnKnown fingerprint: '.$_);
-                              exit();
-                             }
-                            else
-                             {my $fingerprint=$1.$2.$3.$4.$5.$6.$7.$8.$9.$10;
-                              $_=readline($files[$i]);
-                              if($_ !~ /^uptime [0-9]{1,9}$/)
-                               {warn('UnKnown uptime: '.$_);
-                                exit();
-                               }
-                              else
-                               {$_=readline($files[$i]);
-                                if($_ !~ /^bandwidth [0-9]{1,8} [0-9]{1,8} [0-9]{1,8}$/)
-                                 {warn('UnKnown bandwidth: '.$_);
-                                  exit();
-                                 }
-                                else
-                                 {$_=readline($files[$i]);
-                                  if($_ !~ /^opt extra-info-digest [0-9A-F]{40}$/)
-                                   {warn('UnKnown opt extra-info-digest: '.$_);
-                                    exit();
-                                   }
-                                  else
-                                   {$_=readline($files[$i]);
-                                    $_.=readline($files[$i]);
-                                    if($_ !~ /^onion-key\n-----BEGIN RSA PUBLIC KEY-----$/)
-                                     {warn('UnKnown onion-key: '.$_);
-                                      exit();
-                                     }
-                                    else
-                                     {
-                                      print('EntryGuard '.$nickname.' '.$fingerprint.' # '.$ORPort."\n".'EntryGuardAddedBy '.$fingerprint.' '.$torVer.' '.$published."\n");
-                                     }
-                                   }
-                                 }
-                               }
-                             }
-                           }
-                         }
-                       }
-                     }
-                   }
-                 }
-               }
+             {parse($_);
+              $_=$line;
              }
            }
          }
+        parse($_);
        }
       close($files[$i]);
      }
