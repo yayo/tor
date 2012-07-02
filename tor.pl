@@ -26,14 +26,16 @@ use POSIX qw(mktime strftime);
 use File::Basename;
 
 my $timezone=28800;
+my $enough=300;
 
 my %ips;
 my %fingerprints;
 my %entrys;
+my %published;
 
 sub parse($)
  {
-  if($_[0] !~ /^\@downloaded-at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\n\@source "[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}"\nrouter ([0-9A-Za-z]{1,19}) ([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3}) ([0-9]{1,}) [0-9]{1,} [0-9]{1,}\nplatform Tor ([0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}[.][0-9]{1,})(?:-alpha|-beta|-alpha-dev|-beta-dev|-rc|-dev){0,1} (?:\(git-[0-9a-f]{16}\) ){0,1}on (?:Windows|Linux|FreeBSD|OpenBSD|NetBSD|SunOS|Darwin|DragonFly|Very recent version of Windows)[^\n]{0,}\nopt protocols Link 1 2 Circuit 1\npublished ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})\nopt fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})\nuptime [0-9]{1,9}\nbandwidth [0-9]{1,10} [0-9]{1,10} [0-9]{1,10}\n(?:opt extra-info-digest [0-9A-F]{40}\n){0,1}(?:opt caches-extra-info\n){0,1}onion-key\n-----BEGIN RSA PUBLIC KEY-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{59}=\n-----END RSA PUBLIC KEY-----\nsigning-key\n-----BEGIN RSA PUBLIC KEY-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{59}=\n-----END RSA PUBLIC KEY-----\n(?:family(?: \$[0-9A-Fa-f]{40}){0,}(?: [^ \n]{1,}){0,}\n){0,1}(?:opt hibernating 1\n){0,1}(?:opt hidden-service-dir\n){0,1}(?:opt allow-single-hop-exits\n){0,1}(?:contact [^\n]{1,}\n){0,1}(?:(?:reject|accept) (?:\*|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3})(?:\/[0-9]{1,2}){0,1}:(?:\*|[0-9]{1,5}(?:-[0-9]{1,5}){0,1})\n){1,}router-signature\n-----BEGIN SIGNATURE-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{43}=\n-----END SIGNATURE-----\n$/)
+  if($_[0] !~ /^\@downloaded-at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\n\@source "[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}"\nrouter ([0-9A-Za-z]{1,19}) ([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3}) ([0-9]{1,}) [0-9]{1,} [0-9]{1,}\nplatform Tor ([0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}[.][0-9]{1,})(?:-alpha|-beta|-rc|-alpha-dev|-beta-dev|-rc-dev|-dev){0,1} (?:\(git-[0-9a-f]{16}\) ){0,1}on (?:Windows|Linux|FreeBSD|OpenBSD|NetBSD|SunOS|Darwin|DragonFly|Very recent version of Windows)[^\n]{0,}\nopt protocols Link 1 2 Circuit 1\npublished ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})\nopt fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})\nuptime [0-9]{1,9}\nbandwidth [0-9]{1,10} [0-9]{1,10} [0-9]{1,10}\n(?:opt extra-info-digest [0-9A-F]{40}\n){0,1}(?:opt caches-extra-info\n){0,1}onion-key\n-----BEGIN RSA PUBLIC KEY-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{59}=\n-----END RSA PUBLIC KEY-----\nsigning-key\n-----BEGIN RSA PUBLIC KEY-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{59}=\n-----END RSA PUBLIC KEY-----\n(?:family(?: \$[0-9A-Fa-f]{40}){0,}(?: [^ \n]{1,}){0,}\n){0,1}(?:opt hibernating 1\n){0,1}(?:opt hidden-service-dir\n){0,1}(?:opt allow-single-hop-exits\n){0,1}(?:contact [^\n]{1,}\n){0,1}((?:(?:reject|accept) (?:\*|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3})(?:\/[0-9]{1,2}){0,1}:(?:\*|[0-9]{1,5}(?:-[0-9]{1,5}){0,1})\n){1,})router-signature\n-----BEGIN SIGNATURE-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{43}=\n-----END SIGNATURE-----\n$/)
    {warn('UnKnown router:'."\n".$_[0]);
     exit();
    }
@@ -54,11 +56,13 @@ sub parse($)
        {my $ORPort=$2.'.'.$3.'.'.$4.'.'.$5;
         $ips{$ORPort}{$6}=0;
         $ORPort.=':'.$6;
-        my $fingerprint=$14.$15.$16.$17.$18.$19.$20.$21.$22.$23;
-        $fingerprints{$fingerprint}{$ORPort}=0;
-        if(!exists($_{$ORPort})||(exists($_{$ORPort})&&$_{$ORPort}[0]<$published))
-         {@_=($published,$_[0],$fingerprint,$1,$7);
+        if(!exists($_{$ORPort})||(exists($_{$ORPort})&&$_{$ORPort}[1]<$published))
+         {
+          my $fingerprint=$14.$15.$16.$17.$18.$19.$20.$21.$22.$23;
+          $fingerprints{$fingerprint}{$ORPort}=0;
+          @_=($_[0],$published,$fingerprint,$1,$7,("reject *:*\n" eq $24 ? 0 : 1));
           $_{$ORPort}=\@_;
+          $published{$published}{$ORPort}=0;
          }
        }
      }
@@ -68,7 +72,7 @@ sub parse($)
 sub state($$)
  {my @t;
   if(0!=$_[1])
-   {@t=gmtime($_{$_[0]}[0]);
+   {@t=gmtime($_{$_[0]}[1]);
    }
   else
    {@t=gmtime();
@@ -83,6 +87,7 @@ if(1>scalar(@ARGV))
 else
  {my $cmd;
   my $old=0;
+  my $only=0;
   my $i=0;
   my @files;
   my %ip;
@@ -102,6 +107,9 @@ else
      }
     elsif($ARGV[$_] eq 'old')
      {$old=1;
+     }
+    elsif($ARGV[$_] eq 'only')
+     {$only=1;
      }
     elsif($ARGV[$_] =~ /^([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})(:([0-9]{1,5})){0,1}$/)
      {if(!defined($6))
@@ -126,7 +134,7 @@ else
          }
         else
          {while(my $line=<FILE>)
-           {if($line =~ /^EntryGuard [0-9A-Za-z]{1,19} ([0-9A-F]{40})$/)
+           {if($line =~ /^EntryGuard [0-9A-Za-z]{1,19} ([0-9A-F]{40})(?:[ ]|#[^\n]{0,}){0,}\n$/)
              {$entrys{$1}=0;
              }
            }
@@ -207,8 +215,51 @@ else
          }
        }
       elsif('t' eq $cmd)
-       {while((my $ORPort,$_)=each(%_))
-         {print($$_[1]);
+       {if(0==scalar(keys(%ip)))
+         {while((my $ORPort,$_)=each(%_))
+           {print($$_[0]);
+           }
+         }
+        else
+         {my %o;
+          foreach(keys(%ip))
+           {if(exists($_{$_}))
+             {print($_{$_}[0]);
+              $o{$_}=0;
+             }
+            elsif(exists($ips{$_}))
+             {foreach my $port (keys(%{$ips{$_}}))
+               {print($_{$_.':'.$port}[0]);
+                $o{$_.':'.$port}=0;
+               }
+             }
+            else
+             {warn('Not Found: '.$_);
+              exit;
+             }
+           }
+          if(0==$only)
+           {
+            foreach(sort{$b <=> $a}(keys(%published)))
+             {
+              if(scalar(keys(%o))>=$enough)
+               {last;
+               }
+              else
+               {
+                foreach(keys(%{$published{$_}}))
+                 {
+                  if(!exists($o{$_}))
+                   {
+                    if(1==$_{$_}[5])
+                     {print($_{$_}[0]);
+                      $o{$_}=0;
+                     }
+                   }
+                 }
+               }
+             }
+           }
          }
        }
       elsif('i' eq $cmd)
