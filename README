@@ -1,0 +1,33 @@
+现在翻墙越来越难，Tor的表现越来越不稳定。
+为了提升Tor翻墙的稳定性，写了个Tor辅助小工具。
+
+启动Tor遇到的困难大约可以分为两个部分：
+1.获取网络上的Tor服务器列表（下载 cached-certs cached-microdesc-consensus cached-microdescs cached-consensus cached-descriptors 等文件）。
+2.从上步下载的服务器列表中，找到至少一个能连接上的Tor服务器。
+
+此工具主要解决第2步中遇到的困难。
+
+此工具现包含4个功能：
+1.列出Tor服务器IP列表。
+2.指定IP地址，使Tor优先连接指定的Tor服务器。
+3.精简Tor服务器列表文件。
+4.列出当前优先连接的服务器IP地址。
+
+通过了启动步骤1后，常常我们看到Tor徘徊在85%与90%之间，这是因为大多数Tor服务器被墙了，Tor难以找到一个可用的接入服务器，这时我们希望帮助Tor尽快通过。
+首先用：
+perl tor.pl i cached-descriptors cached-descriptors.new > tor_ips.txt
+列出我们已知的Tor服务器IP地址。
+然后用：
+sed -e 's/:/ /g' tor_ips.txt | while read LINE ; do echo -n | nc -w 1 ${LINE} 2> /dev/null ; if [ 0 -eq $? ] ; then echo ${LINE} ; fi ; done > tcp_connected.txt
+得到能连接的Tor服务器。
+（不同系统nc命令有差别，请自行修改nc行命令）
+（这里只是测试TCP连接，就算TCP可连，可能SSL会话被侦测到，并被阻断）
+（因为Tor测试的过程缓慢，所以我们自行测试能大大增加效率）
+最后以：
+perl tor.pl s cached-descriptors cached-descriptors.new $(sed -e 's/ /:/g' tcp_connected.txt) > state
+生成state文件，指定了优先接入的Tor服务器。
+启动Tor，这时应该很快就能连上100%。
+
+指定EntryGuard生成state文件 与 指定bridge间的优缺点对比：
+优点：不会粘滞于指定的服务器，当指定的服务器无法连接后，Tor会寻找新的服务器；而bridge则不会。
+缺点：bridge能帮助解决步骤1的困难；EntryGuard则不能。
