@@ -1,5 +1,6 @@
 
 # perl tor.pl s cached-descriptors 128.31.0.34
+# cat cached-descriptors | perl tor.pl s - 128.31.0.34
 # perl tor.pl s cached-descriptors 128.31.0.34:9101
 # perl tor.pl s cached-descriptors 128.31.0.34:9101 76.73.17.194
 # perl tor.pl s cached-descriptors 128.31.0.34:9101 76.73.17.194:9090
@@ -8,17 +9,15 @@
 # perl tor.pl s 128.31.0.34 cached-descriptors 76.73.17.194 cached-descriptors.new
 # perl tor.pl s 128.31.0.34 76.73.17.194 cached-descriptors cached-descriptors.new
 
-# perl tor.pl s old cached-descriptors 128.31.0.34
+# perl tor.pl S cached-descriptors 128.31.0.34
 
-# perl tor.pl t cached-descriptors cached-descriptors.new > cached-descriptors.new.new
+# perl tor.pl t cached-descriptors cached-descriptors.new | 7za a -mx9 -si cached-descriptors.7z
 # Verify:
 # sed -ne 's/^router [^ ]\{1,\} \([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\) \([0-9]\{1,5\}\) [0-9]\{1,5\} [0-9]\{1,5\}$/\1.\2.\3.\4 \5/p' cached-descriptors cached-descriptors.new | sort | uniq | wc
-# sed -ne 's/^router [^ ]\{1,\} \([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\) \([0-9]\{1,5\}\) [0-9]\{1,5\} [0-9]\{1,5\}$/\1.\2.\3.\4 \5/p' cached-descriptors.new.new | sort | uniq | wc
-
+# 7za x -so cached-descriptors.7z | perl tor.pl i - | wc
 
 # perl tor.pl e state cached-descriptors cached-descriptors.new
 # perl tor.pl i cached-descriptors cached-descriptors.new | sed -e 's/:/ /g' | while read LINE ; do echo -n | nc -w 1 ${LINE} 2> /dev/null ; if [ 0 -eq $? ] ; then echo ${LINE} ; fi ; done
-
 
 use strict;
 use warnings;
@@ -72,26 +71,20 @@ if(1>scalar(@ARGV))
  }
 else
  {my $cmd;
-  my $old=0;
-  my $i=0;
-  my @files;
   my %ip;
   for($_=0;$_<scalar(@ARGV);$_++)
    {
-    if($ARGV[$_] eq 's')
-     {$cmd='s'; # build state from IPs
-     }
-    elsif($ARGV[$_] eq 't')
-     {$cmd='t'; # remove duplicated IPs in cached-descriptors
-     }
-    elsif($ARGV[$_] eq 'i')
+    if('i' eq $ARGV[$_])
      {$cmd='i'; # list IPs in cached-descriptors
      }
-    elsif($ARGV[$_] eq 'e')
-     {$cmd='e'; # list IPs in state
+    elsif('s' eq $ARGV[$_] || 'S' eq $ARGV[$_])
+     {$cmd=$ARGV[$_]; # build state from IPs
      }
-    elsif($ARGV[$_] eq 'old')
-     {$old=1;
+    elsif('t' eq $ARGV[$_])
+     {$cmd='t'; # remove duplicated IPs in cached-descriptors
+     }
+    elsif('e' eq $ARGV[$_])
+     {$cmd='e'; # list IPs in state
      }
     elsif($ARGV[$_] =~ /^([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})(:([0-9]{1,5})){0,1}$/)
      {if(!defined($6))
@@ -108,8 +101,7 @@ else
        }
      }
     else
-     {
-      if('state' eq basename($ARGV[$_]))
+     {if('state' eq basename($ARGV[$_]))
        {if(!open(FILE,'<',$ARGV[$_]))
          {warn('Can NOT open file: '.$ARGV[$_]);
           exit();
@@ -129,12 +121,37 @@ else
          }
        }
       else
-       {if(!open($files[$i],'<',$ARGV[$_]))
+       {my $f;
+        if(!('-' eq $ARGV[$_] && ($f=*STDIN)) && !open($f,'<',$ARGV[$_]))
          {warn('Can NOT open file: '.$ARGV[$_]);
           exit();
          }
         else
-         {$i++;
+         {if(defined(my $r=readline($f)))
+           {if($r !~ /^\@downloaded-at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
+             {warn('UnKnown LINE1: '.$r);
+              exit();
+             }
+            else
+             {while(my $line=readline($f))
+               {if($line !~ /^\@downloaded-at /)
+                 {$r.=$line;
+                 }
+                else
+                 {if($line !~ /^\@downloaded-at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
+                   {warn('UnKnown @downloaded-at: '.$line);
+                    exit();
+                   }
+                  else
+                   {parse($r);
+                    $r=$line;
+                   }
+                 }
+               }
+              parse($r);
+             }
+           }
+          close($f);
          }
        }
      }
@@ -144,41 +161,12 @@ else
     exit();
    }
   else
-   {if(1>scalar(@files))
-     {warn('NO file defined!');
+   {if(1>scalar(keys(%_)))
+     {warn('NO cached-descriptors defined!');
       exit();
      }
     else
-     {
-      foreach $i (@files)
-       {if(defined($_=readline($i)))
-         {
-          if($_ !~ /^\@downloaded-at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
-           {warn('UnKnown LINE1: '.$_);
-            exit();
-           }
-          else
-           {while(my $line=readline($i))
-             {if($line !~ /^\@downloaded-at /)
-               {$_.=$line;
-               }
-              else
-               {if($line !~ /^\@downloaded-at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
-                 {warn('UnKnown @downloaded-at: '.$line);
-                  exit();
-                 }
-                else
-                 {parse($_);
-                  $_=$line;
-                 }
-               }
-             }
-            parse($_);
-           }
-         }
-        close($i);
-       }
-      foreach(keys(%ip))
+     {foreach(keys(%ip))
        {if(exists($_{$_})){}
         elsif(exists($ips{$_}))
          {foreach my $port (keys(%{$ips{$_}}))
@@ -192,39 +180,26 @@ else
          }
        }
       undef(%ips);
-      if('s' eq $cmd)
+      if('i' eq $cmd)
+       {foreach(keys(%_))
+         {print($_."\n");
+         }
+       }
+      elsif('s' eq $cmd || 'S' eq $cmd)
        {if(0==scalar(keys(%ip)))
          {warn('NO IP defined!');
           exit();
          }
         else
          {foreach(keys(%ip))
-           {my @t;
-            if(0!=$old)
-             {@t=gmtime($_{$_}[1]);
-             }
-            else
-             {@t=gmtime();
-             }
-            print('EntryGuard '.$_{$_}[3].' '.$_{$_}[2].' # '.$_."\n".'EntryGuardAddedBy '.$_{$_}[2].' '.$_{$_}[4].' '.POSIX::strftime('%Y-%m-%d %H:%M:%S',@t)."\n");           
+           {print('EntryGuard '.$_{$_}[3].' '.$_{$_}[2].' # '.$_."\n".'EntryGuardAddedBy '.$_{$_}[2].' '.$_{$_}[4].' '.POSIX::strftime('%Y-%m-%d %H:%M:%S',('S' eq $cmd ? gmtime($_{$_}[1]):gmtime()))."\n");
            }
          }
        }
       elsif('t' eq $cmd)
-       {if(0==scalar(keys(%ip)))
-         {foreach(sort{ $_{$a}[1] <=> $_{$b}[1] || $a cmp $b }(keys(%_)))
-           {print($_{$_}[0]);
-           }
-         }
-        else
-         {foreach(keys(%ip))
-           {print($_{$_}[0]);
-           }
-         }
-       }
-      elsif('i' eq $cmd)
-       {foreach(keys(%_))
-         {print($_."\n");
+       {$_= 0==scalar(keys(%ip)) ? \%_ : \%ip ;
+        foreach(sort{ $_{$a}[1] <=> $_{$b}[1] || $a cmp $b }(keys(%$_)))
+         {print($_{$_}[0]);
          }
        }
       elsif('e' eq $cmd)
