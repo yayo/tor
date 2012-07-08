@@ -23,6 +23,7 @@ use strict;
 use warnings;
 use POSIX qw(mktime strftime);
 use File::Basename;
+use IO::Socket::INET;
 
 my $timezone=28800;
 
@@ -65,6 +66,22 @@ sub parse($)
    }
  }
 
+sub tcp($)
+ {@_=split(':',$_[0],2);
+  my $sock = IO::Socket::INET->new(PeerAddr=>$_[0],PeerPort=>$_[1],Proto=>'tcp',Timeout=>1);
+  if(!defined($sock)||!$sock->connected)
+   {return(0);
+   }
+  else
+   {$sock->close();
+    return(1);
+   }
+ }
+
+sub state($$)
+ {print('EntryGuard '.$_{$_[0]}[3].' '.$_{$_[0]}[2].' # '.$_[0]."\n".'EntryGuardAddedBy '.$_{$_[0]}[2].' '.$_{$_[0]}[4].' '.POSIX::strftime('%Y-%m-%d %H:%M:%S',('S' eq $_[1] ? gmtime($_{$_[0]}[1]):gmtime()))."\n");
+ }
+
 if(1>scalar(@ARGV))
  {warn('Usage: tor.pl cached-descriptors');
   exit();
@@ -77,6 +94,18 @@ else
     if('i' eq $ARGV[$_])
      {$cmd='i'; # list IPs in cached-descriptors
      }
+    elsif('in' eq $ARGV[$_])
+     {$cmd='in'; # list IPs count in cached-descriptors
+     }
+    elsif('it' eq $ARGV[$_])
+     {$cmd='it'; # list IPs in cached-descriptors connected
+     }
+    elsif('its' eq $ARGV[$_])
+     {$cmd='its'; # build state from IPs in cached-descriptors connected
+     }
+    elsif('itS' eq $ARGV[$_])
+     {$cmd='itS'; # build state from IPs in cached-descriptors connected
+     }
     elsif('s' eq $ARGV[$_] || 'S' eq $ARGV[$_])
      {$cmd=$ARGV[$_]; # build state from IPs
      }
@@ -85,6 +114,18 @@ else
      }
     elsif('e' eq $ARGV[$_])
      {$cmd='e'; # list IPs in state
+     }
+    elsif('en' eq $ARGV[$_])
+     {$cmd='en'; # list IPs count in state
+     }
+    elsif('et' eq $ARGV[$_])
+     {$cmd='et'; # list IPs in state connected
+     }
+    elsif('ets' eq $ARGV[$_])
+     {$cmd='ets'; # build state from IPs in state connected
+     }
+    elsif('etS' eq $ARGV[$_])
+     {$cmd='etS'; # build state from IPs in state connected
      }
     elsif($ARGV[$_] =~ /^([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})(:([0-9]{1,5})){0,1}$/)
      {if(!defined($6))
@@ -180,9 +221,29 @@ else
          }
        }
       undef(%ips);
-      if('i' eq $cmd)
+      if('in' eq $cmd)
+       {print(scalar(keys(%_))."\n");
+       }
+      elsif('i' eq $cmd || 'it' eq $cmd || 'its' eq $cmd || 'itS' eq $cmd)
        {foreach(keys(%_))
-         {print($_."\n");
+         {if('i' eq $cmd)
+           {print($_."\n");
+           }
+          else
+           {if(tcp($_))
+             {if('it' eq $cmd)
+               {print($_."\n");
+               }
+              else
+               {if('its' eq $cmd)
+                 {state($_,'s');
+                 }
+                else
+                 {state($_,'S');
+                 }
+               }
+             }
+           }
          }
        }
       elsif('s' eq $cmd || 'S' eq $cmd)
@@ -192,7 +253,7 @@ else
          }
         else
          {foreach(keys(%ip))
-           {print('EntryGuard '.$_{$_}[3].' '.$_{$_}[2].' # '.$_."\n".'EntryGuardAddedBy '.$_{$_}[2].' '.$_{$_}[4].' '.POSIX::strftime('%Y-%m-%d %H:%M:%S',('S' eq $cmd ? gmtime($_{$_}[1]):gmtime()))."\n");
+           {state($_,$cmd);
            }
          }
        }
@@ -202,20 +263,42 @@ else
          {print($_{$_}[0]);
          }
        }
-      elsif('e' eq $cmd)
+      elsif('e' eq $cmd || 'en' eq $cmd || 'et' eq $cmd || 'ets' eq $cmd || 'etS' eq $cmd)
        {if(0==scalar(keys(%entrys)))
          {warn('state file NOT defined!');
           exit();
          }
         else
-         {foreach(keys(%entrys))
-           {if(!exists($fingerprints{$_}))
-             {warn('Not matched fingerprints: '.$_);
-              exit();
-             }
-            else
-             {foreach(keys(%{$fingerprints{$_}}))
-               {print($_."\n");
+         {if('en' eq $cmd)
+           {print(scalar(keys(%entrys))."\n");
+           }
+          else
+           {foreach(keys(%entrys))
+             {if(!exists($fingerprints{$_}))
+               {warn('Not matched fingerprints: '.$_);
+                exit();
+               }
+              else
+               {foreach(keys(%{$fingerprints{$_}}))
+                 {if('e' eq $cmd)
+                   {print($_."\n");
+                   }
+                  else
+                   {if(tcp($_))
+                     {if('et' eq $cmd)
+                       {print($_."\n");
+                       }
+                      else
+                       {if('ets' eq $cmd)
+                         {state($_,'s');
+                         }
+                        else
+                         {state($_,'S');
+                         }
+                       }
+                     }
+                   }
+                 }
                }
              }
            }
