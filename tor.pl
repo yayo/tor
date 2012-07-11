@@ -19,6 +19,10 @@
 # perl tor.pl e state cached-descriptors cached-descriptors.new
 # perl tor.pl i cached-descriptors cached-descriptors.new | sed -e 's/:/ /g' | while read LINE ; do echo -n | nc -w 1 ${LINE} 2> /dev/null ; if [ 0 -eq $? ] ; then echo ${LINE} ; fi ; done
 
+# CREATE TABLE ip(id INTEGER PRIMARY KEY AUTOINCREMENT,ip integer(4) not null ,port integer(2) not null,unique(ip,port));
+# CREATE TABLE "connect"(ip INTEGER not null references ip(id),time integer(4) not null,connectivity integer(1) not null,primary key(ip,time));
+# SELECT (ip.ip/16777216)||'.'||((ip.ip%16777216)/65536)||'.'||((ip.ip%65536)/256)||'.'||(ip.ip%256)||':'||port,strftime('%Y-%m-%dT%H:%M:%SZ',max(time),'unixepoch') FROM ip inner join connect on ip.id=connect.ip and time>strftime('%s')-24*60*60 and connectivity=2 GROUP BY id ORDER BY max(time) DESC LIMIT 32;
+
 use strict;
 use warnings;
 use POSIX qw(mktime strftime);
@@ -80,6 +84,15 @@ sub tcp($)
 
 sub state($$)
  {print('EntryGuard '.$_{$_[0]}[3].' '.$_{$_[0]}[2].' # '.$_[0]."\n".'EntryGuardAddedBy '.$_{$_[0]}[2].' '.$_{$_[0]}[4].' '.POSIX::strftime('%Y-%m-%d %H:%M:%S',('S' eq $_[1] ? gmtime($_{$_[0]}[1]):gmtime()))."\n");
+ }
+
+sub ip2int($)
+ {@_=split(/[.:]/,$_[0],5);
+  return(unpack('N',pack('C4',@_)),$_[4]);
+ }
+
+sub int2ip($$)
+ {return(join('.',unpack('C4',pack('N',$_[0]))).':'.$_[1]);
  }
 
 if(1>scalar(@ARGV))
@@ -224,23 +237,31 @@ else
       if('in' eq $cmd)
        {print(scalar(keys(%_))."\n");
        }
-      elsif('i' eq $cmd || 'it' eq $cmd || 'its' eq $cmd || 'itS' eq $cmd)
+      elsif('it' eq $cmd)
+       {$|=1;
+        foreach(keys(%_))
+         {@_=ip2int($_);
+          if(int2ip($_[0],$_[1]) ne $_)
+           {warn('BAD');
+            exit();
+           }
+          else
+           {print('INSERT OR IGNORE INTO ip(ip,port) values('.$_[0].','.$_[1].');'.'INSERT INTO connect(ip,time,connectivity) values((select id from ip where ip='.$_[0],' and port=',$_[1].'),'.POSIX::strftime('%s',localtime()).','.(tcp($_)?2:1).');'."\n");
+           }
+         }
+       }
+      elsif('i' eq $cmd || 'its' eq $cmd || 'itS' eq $cmd)
        {foreach(keys(%_))
          {if('i' eq $cmd)
            {print($_."\n");
            }
           else
            {if(tcp($_))
-             {if('it' eq $cmd)
-               {print($_."\n");
+             {if('its' eq $cmd)
+               {state($_,'s');
                }
               else
-               {if('its' eq $cmd)
-                 {state($_,'s');
-                 }
-                else
-                 {state($_,'S');
-                 }
+               {state($_,'S');
                }
              }
            }
