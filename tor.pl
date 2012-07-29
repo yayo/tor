@@ -163,13 +163,18 @@ else
         else
          {my $entry0=scalar(keys(%entrys));
           while(my $line=<FILE>)
-           {if($line =~ /^EntryGuard [0-9A-Za-z]{1,19} ([0-9A-F]{40})(?:[ ]|#[^\n]{0,}){0,}\n$/)
-             {$entrys{$1}=0;
+           {NEXT_STATE_LINE:
+            if($line =~ /^EntryGuard [0-9A-Za-z]{1,19} ([0-9A-F]{40})(?:[ ]|#[^\n]{0,}){0,}\n$/)
+             {$line=<FILE>;
+              if($line !~ /^EntryGuardUnlistedSince [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\n$/) # EntryGuardUnlistedSince should be the next line to EntryGuard OR WILL NOT be detected
+               {$entrys{$1}=0;
+                goto NEXT_STATE_LINE;
+               }
              }
            }
           close(FILE);
           if(scalar(keys(%entrys))<=$entry0)
-           {warn('NO "EntryGuard" defined in state file: '.$ARGV[$_]);
+           {warn('NO available "EntryGuard" found in state file: '.$ARGV[$_]);
             exit();
            }
          }
