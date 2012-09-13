@@ -21,7 +21,7 @@
 
 # CREATE TABLE ip(id INTEGER PRIMARY KEY AUTOINCREMENT,ip integer(4) not null ,port integer(2) not null,unique(ip,port));
 # CREATE TABLE "connect"(ip INTEGER not null references ip(id),time integer(4) not null,connectivity integer(1) not null,primary key(ip,time));
-# SELECT (ip.ip/16777216)||'.'||((ip.ip%16777216)/65536)||'.'||((ip.ip%65536)/256)||'.'||(ip.ip%256)||':'||port,strftime('%Y-%m-%dT%H:%M:%SZ',max(time),'unixepoch') FROM ip inner join connect on ip.id=connect.ip and time>strftime('%s')-24*60*60 and connectivity=2 GROUP BY id ORDER BY max(time) DESC LIMIT 32;
+# SELECT (ip.ip/16777216)||'.'||((ip.ip%16777216)/65536)||'.'||((ip.ip%65536)/256)||'.'||(ip.ip%256)||':'||port/*,strftime('%Y-%m-%dT%H:%M:%SZ',max(time),'unixepoch')*/ FROM ip inner join connect on ip.id=connect.ip and time>strftime('%s')-24*60*60 and connectivity=2 GROUP BY id ORDER BY max(time) DESC;
 
 use strict;
 use warnings;
@@ -251,7 +251,7 @@ else
             exit();
            }
           else
-           {print('INSERT OR IGNORE INTO ip(ip,port) values('.$_[0].','.$_[1].');'.'INSERT INTO connect(ip,time,connectivity) values((select id from ip where ip='.$_[0],' and port=',$_[1].'),'.time().','.(tcp($_)?2:1).');'."\n");
+           {print('/* '.$_.' */INSERT OR IGNORE INTO ip(ip,port) values('.$_[0].','.$_[1].');'.'INSERT INTO connect(ip,time,connectivity) values((select id from ip where ip='.$_[0],' and port=',$_[1].'),'.time().','.(tcp($_)?2:1).');'."\n");
            }
          }
        }
