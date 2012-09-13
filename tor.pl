@@ -251,7 +251,7 @@ else
             exit();
            }
           else
-           {print('INSERT OR IGNORE INTO ip(ip,port) values('.$_[0].','.$_[1].');'.'INSERT INTO connect(ip,time,connectivity) values((select id from ip where ip='.$_[0],' and port=',$_[1].'),'.POSIX::strftime('%s',localtime()).','.(tcp($_)?2:1).');'."\n");
+           {print('INSERT OR IGNORE INTO ip(ip,port) values('.$_[0].','.$_[1].');'.'INSERT INTO connect(ip,time,connectivity) values((select id from ip where ip='.$_[0],' and port=',$_[1].'),'.time().','.(tcp($_)?2:1).');'."\n");
            }
          }
        }
