@@ -225,7 +225,8 @@ else
       exit();
      }
     else
-     {foreach(keys(%ip))
+     {my %ip_not_found;
+      foreach(keys(%ip))
        {if(exists($_{$_})){}
         elsif(exists($ips{$_}))
          {foreach my $port (keys(%{$ips{$_}}))
@@ -234,92 +235,96 @@ else
           delete($ip{$_});
          }
         else
-         {warn('Not Found: '.$_);
-          exit;
+         {$ip_not_found{$_}=0;
          }
        }
-      undef(%ips);
-      if('in' eq $cmd)
-       {print(scalar(keys(%_))."\n");
+      if(0!=scalar(keys(%ip_not_found)))
+       {warn('Not_Found: '."\n".join("\n",keys(%ip_not_found)));
        }
-      elsif('it' eq $cmd)
-       {$|=1;
-        foreach(keys(%_))
-         {@_=ip2int($_);
-          if(int2ip($_[0],$_[1]) ne $_)
-           {warn('BAD');
-            exit();
-           }
-          else
-           {print('/* '.$_.' */INSERT OR IGNORE INTO ip(ip,port) values('.$_[0].','.$_[1].');'.'INSERT INTO connect(ip,time,connectivity) values((select id from ip where ip='.$_[0],' and port=',$_[1].'),'.time().','.(tcp($_)?2:1).');'."\n");
+      else
+       {undef(%ips);
+        if('in' eq $cmd)
+         {print(scalar(keys(%_))."\n");
+         }
+        elsif('it' eq $cmd)
+         {$|=1;
+          foreach(keys(%_))
+           {@_=ip2int($_);
+            if(int2ip($_[0],$_[1]) ne $_)
+             {warn('BAD');
+              exit();
+             }
+            else
+             {print('/* '.$_.' */INSERT OR IGNORE INTO ip(ip,port) values('.$_[0].','.$_[1].');'.'INSERT INTO connect(ip,time,connectivity) values((select id from ip where ip='.$_[0],' and port=',$_[1].'),'.time().','.(tcp($_)?2:1).');'."\n");
+             }
            }
          }
-       }
-      elsif('i' eq $cmd || 'its' eq $cmd || 'itS' eq $cmd)
-       {foreach(keys(%_))
-         {if('i' eq $cmd)
-           {print($_."\n");
-           }
-          else
-           {if(tcp($_))
-             {if('its' eq $cmd)
-               {state($_,'s');
-               }
-              else
-               {state($_,'S');
+        elsif('i' eq $cmd || 'its' eq $cmd || 'itS' eq $cmd)
+         {foreach(keys(%_))
+           {if('i' eq $cmd)
+             {print($_."\n");
+             }
+            else
+             {if(tcp($_))
+               {if('its' eq $cmd)
+                 {state($_,'s');
+                 }
+                else
+                 {state($_,'S');
+                 }
                }
              }
            }
          }
-       }
-      elsif('s' eq $cmd || 'S' eq $cmd)
-       {if(0==scalar(keys(%ip)))
-         {warn('NO IP defined!');
-          exit();
-         }
-        else
-         {foreach(keys(%ip))
-           {state($_,$cmd);
-           }
-         }
-       }
-      elsif('t' eq $cmd)
-       {$_= 0==scalar(keys(%ip)) ? \%_ : \%ip ;
-        foreach(sort{ $_{$a}[1] <=> $_{$b}[1] || $a cmp $b }(keys(%$_)))
-         {print($_{$_}[0]);
-         }
-       }
-      elsif('e' eq $cmd || 'en' eq $cmd || 'et' eq $cmd || 'ets' eq $cmd || 'etS' eq $cmd)
-       {if(0==scalar(keys(%entrys)))
-         {warn('state file NOT defined!');
-          exit();
-         }
-        else
-         {if('en' eq $cmd)
-           {print(scalar(keys(%entrys))."\n");
+        elsif('s' eq $cmd || 'S' eq $cmd)
+         {if(0==scalar(keys(%ip)))
+           {warn('NO IP defined!');
+            exit();
            }
           else
-           {foreach(keys(%entrys))
-             {if(!exists($fingerprints{$_}))
-               {warn('Not matched fingerprints: '.$_);
-                exit();
-               }
-              else
-               {foreach(keys(%{$fingerprints{$_}}))
-                 {if('e' eq $cmd)
-                   {print($_."\n");
-                   }
-                  else
-                   {if(tcp($_))
-                     {if('et' eq $cmd)
-                       {print($_."\n");
-                       }
-                      else
-                       {if('ets' eq $cmd)
-                         {state($_,'s');
+           {foreach(keys(%ip))
+             {state($_,$cmd);
+             }
+           }
+         }
+        elsif('t' eq $cmd)
+         {$_= 0==scalar(keys(%ip)) ? \%_ : \%ip ;
+          foreach(sort{ $_{$a}[1] <=> $_{$b}[1] || $a cmp $b }(keys(%$_)))
+           {print($_{$_}[0]);
+           }
+         }
+        elsif('e' eq $cmd || 'en' eq $cmd || 'et' eq $cmd || 'ets' eq $cmd || 'etS' eq $cmd)
+         {if(0==scalar(keys(%entrys)))
+           {warn('state file NOT defined!');
+            exit();
+           }
+          else
+           {if('en' eq $cmd)
+             {print(scalar(keys(%entrys))."\n");
+             }
+            else
+             {foreach(keys(%entrys))
+               {if(!exists($fingerprints{$_}))
+                 {warn('Not matched fingerprints: '.$_);
+                  exit();
+                 }
+                else
+                 {foreach(keys(%{$fingerprints{$_}}))
+                   {if('e' eq $cmd)
+                     {print($_."\n");
+                     }
+                    else
+                     {if(tcp($_))
+                       {if('et' eq $cmd)
+                         {print($_."\n");
                          }
                         else
-                         {state($_,'S');
+                         {if('ets' eq $cmd)
+                           {state($_,'s');
+                           }
+                          else
+                           {state($_,'S');
+                           }
                          }
                        }
                      }
@@ -329,10 +334,10 @@ else
              }
            }
          }
-       }
-      else
-       {warn('NOT Implemented Command: '.$cmd);
-        exit();
+        else
+         {warn('NOT Implemented Command: '.$cmd);
+          exit();
+         }
        }
      }
    }
