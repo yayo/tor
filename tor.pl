@@ -19,9 +19,25 @@
 # perl tor.pl e state cached-descriptors cached-descriptors.new
 # perl tor.pl i cached-descriptors cached-descriptors.new | sed -e 's/:/ /g' | while read LINE ; do echo -n | nc -w 1 ${LINE} 2> /dev/null ; if [ 0 -eq $? ] ; then echo ${LINE} ; fi ; done
 
-# CREATE TABLE ip(id INTEGER PRIMARY KEY AUTOINCREMENT,ip integer(4) not null ,port integer(2) not null,unique(ip,port));
-# CREATE TABLE "connect"(ip INTEGER not null references ip(id),time integer(4) not null,connectivity integer(1) not null,primary key(ip,time));
-# SELECT (ip.ip/16777216)||'.'||((ip.ip%16777216)/65536)||'.'||((ip.ip%65536)/256)||'.'||(ip.ip%256)||':'||port/*,strftime('%Y-%m-%dT%H:%M:%SZ',max(time),'unixepoch')*/ FROM ip inner join connect on ip.id=connect.ip and time>strftime('%s')-24*60*60 and connectivity=2 GROUP BY id ORDER BY max(time) DESC;
+=begin SQL
+CREATE TABLE ip(id INTEGER PRIMARY KEY AUTOINCREMENT,ip integer(4) not null ,port integer(2) not null,unique(ip,port));
+CREATE TABLE "connect"(ip INTEGER not null references ip(id) on delete RESTRICT on update CASCADE ,time integer(4) not null,connectivity integer(1) not null,primary key(ip,time));
+SELECT (ip.ip/16777216)||'.'||((ip.ip%16777216)/65536)||'.'||((ip.ip%65536)/256)||'.'||(ip.ip%256)||':'||port/*,strftime('%Y-%m-%dT%H:%M:%SZ',max(time),'unixepoch')*/ FROM ip inner join connect on ip.id=connect.ip and time>strftime('%s')-24*60*60 and connectivity=2 GROUP BY id ORDER BY max(time) DESC;
+
+PRAGMA foreign_keys=ON;
+BEGIN TRANSACTION;
+CREATE TABLE tmp(id INTEGER PRIMARY KEY AUTOINCREMENT,ip INTEGER uniq not null references ip(id) on delete RESTRICT on update CASCADE);
+insert into sqlite_sequence values('tmp',(select min(id) from ip where not exists(select * from ip as ip1 where ip1.id=ip.id+1)));
+insert into tmp(ip) select id from ip where id>(select min(id)+1 from ip where not exists(select * from ip as ip1 where ip1.id=ip.id+1));
+update ip set id=(select tmp.id from tmp where tmp.ip=ip.id) where exists(select * from tmp where ip.id=tmp.ip and ip.id<>tmp.id);
+drop table tmp;
+update sqlite_sequence set seq=(select max(id) from ip) where name='ip';
+select id-(select count(*) from ip) from ip where not exists(select * from ip as ip1 where ip1.id=ip.id+1);
+COMMIT;
+
+=end SQL
+=cut
+
 
 use strict;
 use warnings;
