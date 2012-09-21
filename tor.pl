@@ -20,19 +20,19 @@
 # perl tor.pl i cached-descriptors cached-descriptors.new | sed -e 's/:/ /g' | while read LINE ; do echo -n | nc -w 1 ${LINE} 2> /dev/null ; if [ 0 -eq $? ] ; then echo ${LINE} ; fi ; done
 
 =begin SQL
-CREATE TABLE ip(id INTEGER PRIMARY KEY AUTOINCREMENT,ip integer(4) not null ,port integer(2) not null,unique(ip,port));
-CREATE TABLE "connect"(ip INTEGER not null references ip(id) on delete RESTRICT on update CASCADE ,time integer(4) not null,connectivity integer(1) not null,primary key(ip,time));
-SELECT (ip.ip/16777216)||'.'||((ip.ip%16777216)/65536)||'.'||((ip.ip%65536)/256)||'.'||(ip.ip%256)||':'||port/*,strftime('%Y-%m-%dT%H:%M:%SZ',max(time),'unixepoch')*/ FROM ip inner join connect on ip.id=connect.ip and time>strftime('%s')-24*60*60 and connectivity=2 GROUP BY id ORDER BY max(time) DESC;
+CREATE TABLE router(id INTEGER PRIMARY KEY AUTOINCREMENT,ip integer(4) not null ,port integer(2) not null,unique(ip,port));
+CREATE TABLE "connectivity"(router INTEGER not null references router(id) on delete RESTRICT on update CASCADE ,time integer(4) not null,test integer(1) not null,primary key(router,time));
+SELECT (router.ip/16777216)||'.'||((router.ip%16777216)/65536)||'.'||((router.ip%65536)/256)||'.'||(router.ip%256)||':'||port/*,strftime('%Y-%m-%dT%H:%M:%SZ',max(time),'unixepoch')*/ FROM router inner join connectivity on router.id=connectivity.router and time>strftime('%s')-24*60*60 and test=2 GROUP BY id ORDER BY max(time) DESC;
 
 PRAGMA foreign_keys=ON;
 BEGIN TRANSACTION;
-CREATE TABLE tmp(id INTEGER PRIMARY KEY AUTOINCREMENT,ip INTEGER uniq not null references ip(id) on delete RESTRICT on update CASCADE);
-insert into sqlite_sequence values('tmp',(select min(id) from ip where not exists(select * from ip as ip1 where ip1.id=ip.id+1)));
-insert into tmp(ip) select id from ip where id>(select min(id)+1 from ip where not exists(select * from ip as ip1 where ip1.id=ip.id+1));
-update ip set id=(select tmp.id from tmp where tmp.ip=ip.id) where exists(select * from tmp where ip.id=tmp.ip and ip.id<>tmp.id);
+CREATE TABLE tmp(id INTEGER PRIMARY KEY AUTOINCREMENT,router INTEGER uniq not null references router(id) on delete RESTRICT on update CASCADE);
+insert into sqlite_sequence values('tmp',(select min(id) from router where not exists(select * from router as router1 where router1.id=router.id+1)));
+insert into tmp(router) select id from router where id>(select min(id)+1 from router where not exists(select * from router as router1 where router1.id=router.id+1));
+update router set id=(select tmp.id from tmp where tmp.router=router.id) where exists(select * from tmp where router.id=tmp.router and router.id<>tmp.id);
 drop table tmp;
-update sqlite_sequence set seq=(select max(id) from ip) where name='ip';
-select id-(select count(*) from ip) from ip where not exists(select * from ip as ip1 where ip1.id=ip.id+1);
+update sqlite_sequence set seq=(select max(id) from router) where name='router';
+select id-(select count(*) from router) from router where not exists(select * from router as router1 where router1.id=router.id+1);
 COMMIT;
 
 =end SQL
@@ -271,7 +271,7 @@ else
               exit();
              }
             else
-             {print('/* '.$_.' */INSERT OR IGNORE INTO ip(ip,port) values('.$_[0].','.$_[1].');'.'INSERT INTO connect(ip,time,connectivity) values((select id from ip where ip='.$_[0],' and port=',$_[1].'),'.time().','.(tcp($_)?2:1).');'."\n");
+             {print('/* '.$_.' */INSERT OR IGNORE INTO router(ip,port) values('.$_[0].','.$_[1].');'.'INSERT INTO connectivity values((select id from router where ip='.$_[0],' and port=',$_[1].'),'.time().','.(tcp($_)?2:1).');'."\n");
              }
            }
          }
