@@ -135,7 +135,7 @@ else
     elsif('itS' eq $ARGV[$_])
      {$cmd='itS'; # build state from IPs in cached-descriptors connected
      }
-    elsif('s' eq $ARGV[$_] || 'S' eq $ARGV[$_])
+    elsif('s' eq $ARGV[$_] || 'so' eq $ARGV[$_] || 'S' eq $ARGV[$_] || 'So' eq $ARGV[$_])
      {$cmd=$ARGV[$_]; # build state from IPs
      }
     elsif('t' eq $ARGV[$_])
@@ -252,9 +252,10 @@ else
          }
         else
          {$ip_not_found{$_}=0;
+          delete($ip{$_});
          }
        }
-      if(0!=scalar(keys(%ip_not_found)))
+      if('o' ne substr($cmd,1,1) && 0!=scalar(keys(%ip_not_found)))
        {warn('Not_Found: '."\n".join("\n",keys(%ip_not_found)));
        }
       else
@@ -292,7 +293,7 @@ else
              }
            }
          }
-        elsif('s' eq $cmd || 'S' eq $cmd)
+        elsif('s' eq $cmd || 'so' eq $cmd || 'S' eq $cmd || 'So' eq $cmd)
          {if(0==scalar(keys(%ip)))
            {warn('NO IP defined!');
             exit();
