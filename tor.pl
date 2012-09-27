@@ -141,20 +141,14 @@ else
     elsif('t' eq $ARGV[$_])
      {$cmd='t'; # remove duplicated IPs in cached-descriptors
      }
-    elsif('e' eq $ARGV[$_])
-     {$cmd='e'; # list IPs in state
-     }
-    elsif('en' eq $ARGV[$_])
-     {$cmd='en'; # list IPs count in state
-     }
-    elsif('et' eq $ARGV[$_])
-     {$cmd='et'; # list IPs in state connected
-     }
-    elsif('ets' eq $ARGV[$_])
-     {$cmd='ets'; # build state from IPs in state connected
-     }
-    elsif('etS' eq $ARGV[$_])
-     {$cmd='etS'; # build state from IPs in state connected
+    elsif($ARGV[$_] =~  /^e([0-9]{1,2})(?:n|t[sS]{0,1}){0,1}$/)
+     {if(1>$1 || 15<$1)
+       {warn('1<='.$1.'<=15');
+        exit;
+       }
+      else
+       {$cmd=$ARGV[$_];
+       }
      }
     elsif($ARGV[$_] =~ /^([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})(:([0-9]{1,5})){0,1}$/)
      {if(!defined($6))
@@ -178,13 +172,53 @@ else
          }
         else
          {my $entry0=scalar(keys(%entrys));
-          while(my $line=<FILE>)
-           {NEXT_STATE_LINE:
-            if($line =~ /^EntryGuard [0-9A-Za-z]{1,19} ([0-9A-F]{40})(?:[ ]|#[^\n]{0,}){0,}\r{0,1}\n$/)
-             {$line=<FILE>;
-              if($line !~ /^EntryGuardUnlistedSince [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\r{0,1}\n$/) # EntryGuardUnlistedSince should be the next line to EntryGuard OR WILL NOT be detected
-               {$entrys{$1}=0;
-                goto NEXT_STATE_LINE;
+          my $line;
+          while(defined($line=<FILE>)&&($line !~ /^EntryGuard /)){}
+          NEXT_ENTRY:
+          if($line !~ /^EntryGuard [0-9A-Za-z]{1,19} ([0-9A-F]{40})(?:[ ]|#[^\n]{0,}){0,}\r{0,1}\n$/)
+           {warn($line);
+            exit;
+           }
+          else
+           {my $fingerprint=$1;
+            my $verify;
+            $entrys{$fingerprint}=0;
+            while(defined($line=<FILE>))
+             {if($line =~ /^EntryGuardDownSince [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\r{0,1}\n$/)
+               {$entrys{$fingerprint}|=1;
+               }
+              elsif($line =~ /^EntryGuardUnlistedSince [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\r{0,1}\n$/)
+               {$entrys{$fingerprint}|=2;
+               }
+              elsif($line =~ /^EntryGuardAddedBy ([0-9A-F]{40}) [ 0-9a-z.:-]{1,}\r{0,1}\n$/)
+               {$verify=$1;
+               }
+              elsif($line =~ /^EntryGuardPathBias [0-9]{1,10} [0-9]{1,10}\r{0,1}\n$/){}
+              elsif($line =~ /^EntryGuard /)
+               {if(!defined($verify))
+                 {warn('EntryGuardAddedBy '.$fingerprint.' not found!');
+                  exit;
+                 }
+                else
+                 {if($verify ne $fingerprint)
+                   {warn($verify.' '.$fingerprint);
+                    exit;
+                   }
+                  else
+                   {$entrys{$fingerprint}=1<<$entrys{$fingerprint};
+                    goto NEXT_ENTRY;
+                   }
+                 }
+               }
+              else
+               {if($line =~ /^BWHistoryReadEnds [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\r{0,1}\n$/ || $line =~ /^TorVersion Tor [0-9a-z.() -]{1,}\r{0,1}\n$/)
+                 {$entrys{$fingerprint}=1<<$entrys{$fingerprint};
+                  last;
+                 }
+                else
+                 {warn('Unknown: '.$line);
+                  exit;
+                 }
                }
              }
            }
@@ -310,14 +344,21 @@ else
            {print($_{$_}[0]);
            }
          }
-        elsif('e' eq $cmd || 'en' eq $cmd || 'et' eq $cmd || 'ets' eq $cmd || 'etS' eq $cmd)
+        elsif($cmd =~ /^e([0-9]{1,2})(?:n|t[sS]{0,1}){0,1}$/)
          {if(0==scalar(keys(%entrys)))
            {warn('state file NOT defined!');
             exit();
            }
           else
-           {if('en' eq $cmd)
-             {print(scalar(keys(%entrys))."\n");
+           {my $mask=$1;
+            if($cmd =~ /^e[0-9]{1,2}n$/)
+             {my $n=0;
+              while(my($k,$v)=each(%entrys))
+               {if($v&$mask)
+                 {$n++;
+                 }
+               }
+              print($n."\n");
              }
             else
              {foreach(keys(%entrys))
@@ -326,21 +367,23 @@ else
                   exit();
                  }
                 else
-                 {foreach(keys(%{$fingerprints{$_}}))
-                   {if('e' eq $cmd)
-                     {print($_."\n");
-                     }
-                    else
-                     {if(tcp($_))
-                       {if('et' eq $cmd)
-                         {print($_."\n");
-                         }
-                        else
-                         {if('ets' eq $cmd)
-                           {state($_,'s');
+                 {if($entrys{$_}&$mask)
+                   {foreach(keys(%{$fingerprints{$_}}))
+                     {if($cmd =~ /^e([0-9]{1,2})$/)
+                       {print($_."\n");
+                       }
+                      else
+                       {if(tcp($_))
+                         {if($cmd =~ /^e[0-9]{1,2}t$/)
+                           {print($_."\n");
                            }
                           else
-                           {state($_,'S');
+                           {if($cmd =~ /^e[0-9]{1,2}ts$/)
+                             {state($_,'s');
+                             }
+                            else
+                             {state($_,'S');
+                             }
                            }
                          }
                        }
