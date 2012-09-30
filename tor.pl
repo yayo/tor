@@ -99,7 +99,7 @@ sub tcp($)
  }
 
 sub state($$)
- {print('EntryGuard '.$_{$_[0]}[3].' '.$_{$_[0]}[2].' # '.$_[0]."\n".'EntryGuardAddedBy '.$_{$_[0]}[2].' '.$_{$_[0]}[4].' '.POSIX::strftime('%Y-%m-%d %H:%M:%S',('S' eq $_[1] ? gmtime($_{$_[0]}[1]):gmtime()))."\n");
+ {print('EntryGuard '.$_{$_[0]}[3].' '.$_{$_[0]}[2].' '.$_[0]."\n".'EntryGuardAddedBy '.$_{$_[0]}[2].' '.$_{$_[0]}[4].' '.POSIX::strftime('%Y-%m-%d %H:%M:%S',('S' eq $_[1] ? gmtime($_{$_[0]}[1]):gmtime()))."\n");
  }
 
 sub ip2int($)
@@ -175,7 +175,7 @@ else
           my $line;
           while(defined($line=<FILE>)&&($line !~ /^EntryGuard /)){}
           NEXT_ENTRY:
-          if($line !~ /^EntryGuard [0-9A-Za-z]{1,19} ([0-9A-F]{40})(?:[ ]|#[^\n]{0,}){0,}\r{0,1}\n$/)
+          if($line !~ /^EntryGuard [0-9A-Za-z]{1,19} ([0-9A-F]{40})(?: [0-9.:]{9,21}){0,}\r{0,1}\n$/)
            {warn($line);
             exit;
            }
