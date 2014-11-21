@@ -1425,7 +1425,7 @@ static double
 compute_frac_paths_available(const networkstatus_t *consensus,
                              const or_options_t *options, time_t now,
                              int *num_present_out, int *num_usable_out,
-                             char **status_out)
+                             char **status_out, int *guards_present, int *guards_usable, int *exits_present, int *exits_usable)
 {
   smartlist_t *guards = smartlist_new();
   smartlist_t *mid    = smartlist_new();
@@ -1444,14 +1444,16 @@ compute_frac_paths_available(const networkstatus_t *consensus,
   if (options->EntryNodes) {
     count_usable_descriptors(&np, &nu, guards, consensus, options, now,
                              options->EntryNodes, USABLE_DESCRIPTOR_ALL);
+    if(NULL!=guards_present) *guards_present=np;
+    if(NULL!=guards_usable) *guards_usable=nu;
   } else {
+    if(NULL!=guards_present) *guards_present=0;
+    if(NULL!=guards_usable) *guards_usable=0;
     SMARTLIST_FOREACH(mid, const node_t *, node, {
-      if (authdir) {
-        if (node->rs && node->rs->is_possible_guard)
+      if ((authdir&&(node->rs && node->rs->is_possible_guard))||(!authdir&&(node->is_possible_guard))) {
           smartlist_add(guards, (node_t*)node);
-      } else {
-        if (node->is_possible_guard)
-          smartlist_add(guards, (node_t*)node);
+          if(NULL!=guards_usable) (*guards_usable)++;
+          if(NULL!=guards_present && node_has_descriptor(node)) (*guards_present)++;
       }
     });
   }
@@ -1465,6 +1467,8 @@ compute_frac_paths_available(const networkstatus_t *consensus,
    */
   count_usable_descriptors(&np, &nu, exits, consensus, options, now,
                            NULL, USABLE_DESCRIPTOR_EXIT_ONLY);
+  if(NULL!=exits_present) *exits_present=np;
+  if(NULL!=exits_usable) *exits_usable=nu;
   log_debug(LD_NET,
             "%s: %d present, %d usable",
             "exits",
@@ -1618,7 +1622,7 @@ count_loading_descriptors_progress(void)
 
   paths = compute_frac_paths_available(consensus, options, now,
                                        &num_present, &num_usable,
-                                       NULL);
+                                       NULL,NULL,NULL,NULL,NULL);
 
   fraction = paths / get_frac_paths_needed_for_circs(options,consensus);
   if (fraction > 1.0)
@@ -1671,12 +1675,14 @@ update_router_have_minimum_dir_info(void)
   using_md = consensus->flavor == FLAV_MICRODESC;
 
   /* Check fraction of available paths */
+  int num_present=0, num_usable=0;
+  int guards_present=0, guards_usable=0;
+  int exits_present=0, exits_usable=0;
   {
     char *status = NULL;
-    int num_present=0, num_usable=0;
     double paths = compute_frac_paths_available(consensus, options, now,
                                                 &num_present, &num_usable,
-                                                &status);
+                                                &status,&guards_present,&guards_usable,&exits_present,&exits_usable);
 
     if (paths < get_frac_paths_needed_for_circs(options,consensus)) {
       tor_snprintf(dir_info_status, sizeof(dir_info_status),
@@ -1698,6 +1704,8 @@ update_router_have_minimum_dir_info(void)
 
   /* If paths have just become available in this update. */
   if (res && !have_min_dir_info) {
+    log_notice(LD_DIR,
+        "We now have enough directory information(guards:%d/%d midpoint:%d/%d exit:%d/%d) to build circuits.",guards_present,guards_usable,num_present,num_usable,exits_present,exits_usable);
     control_event_client_status(LOG_NOTICE, "ENOUGH_DIR_INFO");
     if (control_event_bootstrap(BOOTSTRAP_STATUS_CONN_OR, 0) == 0) {
       log_notice(LD_DIR,
