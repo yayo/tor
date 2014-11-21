@@ -6314,7 +6314,7 @@ src/or/tor_main.o: micro-revision.i
 
 src/or/config_codedigest.o: src/or/or_sha1.i
 
-micro-revision.i: FORCE
+micro-revision.i:
 	@rm -f micro-revision.tmp;				\
 	if test -d "$(top_srcdir)/.git" &&				\
 	  test -x "`which git 2>&1;true`"; then				\
@@ -6330,7 +6330,7 @@ micro-revision.i: FORCE
 	  mv micro-revision.tmp micro-revision.i;		\
 	fi; true
 
-src/or/or_sha1.i: $(src_or_tor_SOURCES) $(src_or_libtor_a_SOURCES) $(ORHEADERS)
+src/or/or_sha1.i:
 	$(AM_V_GEN)if test "@SHA1SUM@" != none; then \
 	  (cd "$(srcdir)" && "@SHA1SUM@" $(src_or_tor_SOURCES) $(src_or_libtor_a_SOURCES) $(ORHEADERS) ) | \
 	  "@SED@" -n 's/^\(.*\)$$/"\1\\n"/p' > src/or/or_sha1.i; \
