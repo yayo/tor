@@ -1644,7 +1644,7 @@ get_frac_paths_needed_for_circs(const or_options_t *options,
   } else {
     return networkstatus_get_param(ns, "min_paths_for_circs_pct",
                                    DFLT_PCT_USABLE_NEEDED,
-                                   25, 95)/100.0;
+                                   25, 100)/100.0;
   }
 }
 

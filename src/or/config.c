@@ -2537,7 +2537,7 @@ compute_publishserverdescriptor(or_options_t *options)
 
 /** Lowest allowable value for MaxCircuitDirtiness; if this is too low, Tor
  * will generate too many circuits and potentially overload the network. */
-#define MIN_MAX_CIRCUIT_DIRTINESS 10
+#define MIN_MAX_CIRCUIT_DIRTINESS 1
 
 /** Highest allowable value for MaxCircuitDirtiness: prevents time_t
  * overflows. */
@@ -2824,10 +2824,10 @@ options_validate(or_options_t *old_options, or_options_t *options,
       log_warn(LD_CONFIG, "PathsNeededToBuildCircuits is too low. Increasing "
                "to 0.25");
       options->PathsNeededToBuildCircuits = 0.25;
-    } else if (options->PathsNeededToBuildCircuits > 0.95) {
+    } else if (options->PathsNeededToBuildCircuits > 1) {
       log_warn(LD_CONFIG, "PathsNeededToBuildCircuits is too high. Decreasing "
-               "to 0.95");
-      options->PathsNeededToBuildCircuits = 0.95;
+               "to 1");
+      options->PathsNeededToBuildCircuits = 1;
     }
   }
 
