@@ -1,6 +1,12 @@
 
+# perl tor.pl t cached-descriptors cached-descriptors.new > n2
+# perl tor.pl e15 state n2 > n3
+# perl tor.pl s n2 $(cat n3) > n4
+
+# list descriptors only IPs in cached-consensus
+# perl tor.pl tg cached-descriptors cached-descriptors.new $(sed -ne 's/^r [0-9A-Za-z]\{1,19\} [0-9A-Za-z+\/]\{27\} [0-9A-Za-z+\/]\{27\} [0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} \([0-9]\{1,3\}[.][0-9]\{1,3\}[.][0-9]\{1,3\}[.][0-9]\{1,3\}\) \([0-9]\{1,5\}\) [0-9]\{1,5\}$/\1:\2/p' cached-consensus)
+
 # perl tor.pl s cached-descriptors 128.31.0.34
-# cat cached-descriptors | perl tor.pl s - 128.31.0.34
 # perl tor.pl s cached-descriptors 128.31.0.34:9101
 # perl tor.pl s cached-descriptors 128.31.0.34:9101 76.73.17.194
 # perl tor.pl s cached-descriptors 128.31.0.34:9101 76.73.17.194:9090
@@ -10,13 +16,34 @@
 # perl tor.pl s 128.31.0.34 76.73.17.194 cached-descriptors cached-descriptors.new
 
 # perl tor.pl S cached-descriptors 128.31.0.34
+# s : Publish_Time
+# S : Current_Time
+# o : Ignore IP_NOT_FOUND
 
 # perl tor.pl t cached-descriptors cached-descriptors.new | 7za a -mx9 -si cached-descriptors.7z
 # Verify:
 # sed -ne 's/^router [^ ]\{1,\} \([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\)[.]\([0-9]\{1,3\}\) \([0-9]\{1,5\}\) [0-9]\{1,5\} [0-9]\{1,5\}$/\1.\2.\3.\4 \5/p' cached-descriptors cached-descriptors.new | sort | uniq | wc
 # 7za x -so cached-descriptors.7z | perl tor.pl i - | wc
 
-# perl tor.pl e state cached-descriptors cached-descriptors.new
+# perl tor.pl e1 state cached-descriptors cached-descriptors.new
+#  e1n e1t e1tS
+#  e1 : InUse
+#  e2 : EntryGuardDownSince
+#  e3 : InUse || EntryGuardDownSince
+#  e4 : EntryGuardUnlistedSince
+#  e5 : InUse || EntryGuardUnlistedSince
+#  e6 : EntryGuardDownSince || EntryGuardUnlistedSince
+#  e7 : InUse || EntryGuardDownSince || EntryGuardUnlistedSince
+#  e8 : ( EntryGuardUnlistedSince && EntryGuardUnlistedSince )
+#  e9 : InUse || ( EntryGuardUnlistedSince && EntryGuardUnlistedSince )
+#  e10 : EntryGuardDownSince || ( EntryGuardUnlistedSince && EntryGuardUnlistedSince )
+#  e11 : InUse || EntryGuardDownSince || ( EntryGuardUnlistedSince && EntryGuardUnlistedSince )
+#  e12 : EntryGuardUnlistedSince || ( EntryGuardUnlistedSince && EntryGuardUnlistedSince )
+#  e13 : InUse || EntryGuardUnlistedSince || ( EntryGuardUnlistedSince && EntryGuardUnlistedSince )
+#  e14 : EntryGuardDownSince || EntryGuardUnlistedSince || ( EntryGuardUnlistedSince && EntryGuardUnlistedSince )
+#  e15 : ALL
+#  n => count
+#  t => TCP_Test
 # perl tor.pl i cached-descriptors cached-descriptors.new | sed -e 's/:/ /g' | while read LINE ; do echo -n | nc -w 1 ${LINE} 2> /dev/null ; if [ 0 -eq $? ] ; then echo ${LINE} ; fi ; done
 
 =begin SQL
@@ -42,43 +69,65 @@ COMMIT;
 use strict;
 use warnings;
 use POSIX qw(mktime strftime);
+use Time::Local;
 use File::Basename;
 use IO::Socket::INET;
+use Sys::Mmap;
 
-my $timezone=0;
+@_=gmtime();
+my $timezone=Time::Local::timegm(@_)-Time::Local::timelocal(@_);
 
 my %ips;
 my %fingerprints;
 my %entrys;
 
+my $p_date='[0-9]{4}-[0-9]{2}-[0-9]{2}';
+my $p_time='[0-9]{2}:[0-9]{2}:[0-9]{2}';
+my $p_date_time=$p_date.' '.$p_time;
+my $p_IP1='[0-9]{1,3}';
+my $p_IP="$p_IP1(?:[.]$p_IP1){3}";
+my $p_port='[0-9]{1,5}';
+my $p_portrange="(?:$p_port(?:-$p_port){0,1})";
+my $p_net='\/[0-9]{1,2}';
+my $p_b64_64='[0-9A-Za-z+\/]{64}\n';
+my $p_b64_64x2="(?:$p_b64_64){2}";
+my $p_b64_64x2_60="${p_b64_64x2}[0-9A-Za-z+\/]{59}=\n";
+my $p_b64_43='[0-9A-Za-z+\/]{43}';
+my $p_b64_43e="$p_b64_43=\n";
+my $p_b64_64x2_43="${p_b64_64x2}$p_b64_43e";
+my $p_b64_64x2_11="${p_b64_64x2}[0-9A-Za-z+\/]{11}=\n";
+my $p_version='[0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}';
+my $p_nickname='[0-9A-Za-z]{1,19}';
+my $p_OS='Windows|Linux|FreeBSD|OpenBSD|NetBSD|ElectroBSD|SunOS|Darwin|DragonFly|Bitrig|GNU|Very recent version of Windows|CYGWIN_NT';
+my $p_header;
+
 sub parse($)
- {
-  if($_[0] !~ /^\@downloaded-at [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\n\@source "[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}"\nrouter ([0-9A-Za-z]{1,19}) ([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3})[.]([0-9]{1,3}) ([0-9]{1,5}) [0-9]{1,5} [0-9]{1,5}\n(?:or-address \[[0-9a-f:]{2,}\]:[0-9]{1,5}\n){0,1}platform Tor ([0-9]{1,}[.][0-9]{1,}[.][0-9]{1,}[.][0-9]{1,})(?:-alpha|-beta|-rc|-alpha-dev|-beta-dev|-rc-dev|-dev){0,1} (?:\(git-[0-9a-f]{16}\) ){0,1}on (?:Windows|Linux|FreeBSD|OpenBSD|NetBSD|SunOS|Darwin|DragonFly|Bitrig|GNU|Very recent version of Windows)[^\n]{0,}\n(?:opt ){0,1}protocols Link 1 2 Circuit 1\npublished ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})\n(?:opt ){0,1}fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})\nuptime [0-9]{1,9}\nbandwidth [0-9]{1,10} [0-9]{1,10} [0-9]{1,10}\n(?:(?:opt ){0,1}extra-info-digest [0-9A-F]{40}\n){0,1}(?:(?:opt ){0,1}caches-extra-info\n){0,1}onion-key\n-----BEGIN RSA PUBLIC KEY-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{59}=\n-----END RSA PUBLIC KEY-----\nsigning-key\n-----BEGIN RSA PUBLIC KEY-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{59}=\n-----END RSA PUBLIC KEY-----\n(?:family(?: \$[0-9A-Fa-f]{40}){0,}(?: [^ \n]{1,}){0,}\n){0,1}(?:opt hibernating 1\n){0,1}(?:(?:opt ){0,1}hidden-service-dir\n){0,1}(?:(?:opt ){0,1}allow-single-hop-exits\n){0,1}(?:contact [^\n]{1,}\n){0,1}(?:(?:reject|accept) (?:\*|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3})(?:\/[0-9]{1,2}){0,1}:(?:\*|[0-9]{1,5}(?:-[0-9]{1,5}){0,1})\n){1,}router-signature\n-----BEGIN SIGNATURE-----\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{64}\n[0-9A-Za-z+\/]{43}=\n-----END SIGNATURE-----\n$/)
-   {warn('UnKnown router:'."\n".$_[0]);
+ {if($_[0] !~ /${p_header}router ($p_nickname) ($p_IP) ($p_port) $p_port $p_port\n(?:identity-ed25519\n-----BEGIN ED25519 CERT-----\n$p_b64_64x2_60-----END ED25519 CERT-----\nmaster-key-ed25519 $p_b64_43\n){0,1}(?:or-address \[[0-9a-f:]{2,}\]:$p_port\n){0,1}platform Tor ($p_version)(?:-alpha|-beta|-rc|-alpha-dev|-beta-dev|-rc-dev|-dev){0,1} (?:\(git-[0-9a-f]{16}\) ){0,1}on (?:$p_OS)[^\n]{0,}\n(?:opt ){0,1}(?:protocols Link 1 2 Circuit 1|proto Cons=1-2 Desc=1-2 DirCache=1(?:-2){0,1} HSDir=1(?:-2){0,1} HSIntro=3(?:-4){0,1} HSRend=1-2 Link=1-4 LinkAuth=1(?:,3){0,1} Microdesc=1-2 Relay=1-2)\npublished (([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2}))\n(?:opt ){0,1}fingerprint ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4}) ([0-9A-F]{4})\nuptime [0-9]{1,9}\nbandwidth [0-9]{1,10} [0-9]{1,10} [0-9]{1,10}\n(?:(?:opt ){0,1}extra-info-digest [0-9A-F]{40}(?: $p_b64_43){0,1}\n){0,1}(?:(?:opt ){0,1}caches-extra-info\n){0,1}onion-key\n-----BEGIN RSA PUBLIC KEY-----\n$p_b64_64x2_60-----END RSA PUBLIC KEY-----\nsigning-key\n-----BEGIN RSA PUBLIC KEY-----\n$p_b64_64x2_60-----END RSA PUBLIC KEY-----\n(?:onion-key-crosscert\n-----BEGIN CROSSCERT-----\n$p_b64_64x2_43-----END CROSSCERT-----\n){0,1}(?:ntor-onion-key-crosscert [01]\n-----BEGIN ED25519 CERT-----\n$p_b64_64x2_11-----END ED25519 CERT-----\n){0,1}(?:family(?: \$[0-9A-Fa-f]{40}){0,}(?: [^ \n]{1,}){0,}\n){0,1}(?:(?:opt ){0,1}hibernating 1\n){0,1}(?:(?:opt ){0,1}hidden-service-dir\n){0,1}(?:(?:opt ){0,1}allow-single-hop-exits\n){0,1}(?:contact [^\n]{1,}\n){0,1}(?:ntor-onion-key $p_b64_43e){0,1}(?:(?:reject|accept) (?:\*|$p_IP)(?:$p_net){0,1}:(?:\*|$p_portrange)\n(?:ipv6-policy (?:reject|accept) $p_portrange(?:,$p_portrange){0,}\n){0,1}){1,}(?:tunnelled-dir-server\n){0,1}(?:router-sig-ed25519 [0-9A-Za-z+\/]{86}\n){0,1}router-signature\n-----BEGIN SIGNATURE-----\n$p_b64_64x2_43-----END SIGNATURE-----\n$/)
+   {warn('Malformed router:'."\n".$_[0]);
     exit();
    }
   else
-   {
-    my $published=POSIX::mktime($13,$12,$11,$10,$9-1,$8-1900,0,0,-1)+$timezone;
-    my $t2=POSIX::strftime('%Y-%m-%dT%H:%M:%SZ',gmtime($published));
-    if($8.'-'.$9.'-'.$10.'T'.$11.':'.$12.':'.$13.'Z' ne $t2)
-     {warn('UnKnown published time: '.$_[0]);
+   {my $published=POSIX::mktime($11,$10,$9,$8,$7-1,$6-1900,0,0,-1)+$timezone;
+    if(POSIX::strftime('%Y-%m-%d %H:%M:%S',gmtime($published)) ne $5)
+     {warn('Malformed published time: '.$_[0]);
       exit();
      }
     else
-     {if(0==$6)
+     {if(0==$3)
        {warn('0==ORPort');
         exit();
        }
       else
-       {my $ORPort=$2.'.'.$3.'.'.$4.'.'.$5;
-        $ips{$ORPort}{$6}=0;
-        $ORPort.=':'.$6;
-        if(!exists($_{$ORPort})||(exists($_{$ORPort})&&$_{$ORPort}[1]<$published))
-         {
-          my $fingerprint=$14.$15.$16.$17.$18.$19.$20.$21.$22.$23;
+       {my $ORPort=$2;
+        $ips{$ORPort}{$3}=0;
+        $ORPort.=':'.$3;
+        if(exists($_{$ORPort}) && $published==$_{$ORPort}[1] && $_[0] ne $_{$ORPort}[0])
+         {die('Duplicate Router: '.$ORPort.' '.$published);
+         }
+        elsif(!exists($_{$ORPort}) || (exists($_{$ORPort}) && $published>$_{$ORPort}[1]))
+         {my $fingerprint=$12.$13.$14.$15.$16.$17.$18.$19.$20.$21;
           $fingerprints{$fingerprint}{$ORPort}=0;
-          @_=($_[0],$published,$fingerprint,$1,$7);
+          @_=($_[0],$published,$fingerprint,$1,$4);
           $_{$ORPort}=\@_;
          }
        }
@@ -99,7 +148,7 @@ sub tcp($)
  }
 
 sub state($$)
- {print('EntryGuard '.$_{$_[0]}[3].' '.$_{$_[0]}[2].' '.$_[0]."\n".'EntryGuardAddedBy '.$_{$_[0]}[2].' '.$_{$_[0]}[4].' '.POSIX::strftime('%Y-%m-%d %H:%M:%S',('S' eq $_[1] ? gmtime($_{$_[0]}[1]):gmtime()))."\n");
+ {print('EntryGuard '.$_{$_[0]}[3].' '.$_{$_[0]}[2].' # '.$_[0]."\n".'EntryGuardAddedBy '.$_{$_[0]}[2].' '.$_{$_[0]}[4].' '.POSIX::strftime('%Y-%m-%d %H:%M:%S',('S' ne $_[1] ? gmtime($_{$_[0]}[1]):gmtime()))."\n");
  }
 
 sub ip2int($)
@@ -135,13 +184,13 @@ else
     elsif('itS' eq $ARGV[$_])
      {$cmd='itS'; # build state from IPs in cached-descriptors connected
      }
-    elsif('s' eq $ARGV[$_] || 'so' eq $ARGV[$_] || 'S' eq $ARGV[$_] || 'So' eq $ARGV[$_])
+    elsif('s' eq $ARGV[$_] || 'sg' eq $ARGV[$_] || 'S' eq $ARGV[$_] || 'Sg' eq $ARGV[$_])
      {$cmd=$ARGV[$_]; # build state from IPs
      }
-    elsif('t' eq $ARGV[$_])
-     {$cmd='t'; # remove duplicated IPs in cached-descriptors
+    elsif('t' eq $ARGV[$_] || 'tg' eq $ARGV[$_])
+     {$cmd=$ARGV[$_]; # remove duplicated IPs in cached-descriptors
      }
-    elsif($ARGV[$_] =~  /^e([0-9]{1,2})(?:n|t[sS]{0,1}){0,1}$/)
+    elsif($ARGV[$_] =~  /^e([0-9]{1,2})(?:g){0,1}(?:n|t[sS]{0,1}){0,1}$/)
      {if(1>$1 || 15<$1)
        {warn('1<='.$1.'<=15');
         exit;
@@ -166,99 +215,81 @@ else
      }
     else
      {if('state' eq basename($ARGV[$_]))
-       {if(!open(FILE,'<',$ARGV[$_]))
+       {my $FILE;
+        if(!open($FILE,'<',$ARGV[$_]))
          {warn('Can NOT open file: '.$ARGV[$_]);
           exit();
          }
         else
-         {my $entry0=scalar(keys(%entrys));
-          my $line;
-          while(defined($line=<FILE>)&&($line !~ /^EntryGuard /)){}
-          NEXT_ENTRY:
-          if($line !~ /^EntryGuard [0-9A-Za-z]{1,19} ([0-9A-F]{40})(?: [0-9.:]{9,21}){0,}\r{0,1}\n$/)
-           {warn($line);
-            exit;
-           }
+         {my $entry1=scalar(keys(%entrys));
+          my $state;
+          sysread($FILE,$state,-s $FILE);
+          close($FILE);
+          if("\n" ne substr($state,-1,1)) {die('CR != LAST_BYTE');}
           else
-           {my $fingerprint=$1;
-            my $verify;
-            $entrys{$fingerprint}=0;
-            while(defined($line=<FILE>))
-             {if($line =~ /^EntryGuardDownSince [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\r{0,1}\n$/)
-               {$entrys{$fingerprint}|=1;
-               }
-              elsif($line =~ /^EntryGuardUnlistedSince [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\r{0,1}\n$/)
-               {$entrys{$fingerprint}|=2;
-               }
-              elsif($line =~ /^EntryGuardAddedBy ([0-9A-F]{40}) [ 0-9a-z.:-]{1,}\r{0,1}\n$/)
-               {$verify=$1;
-               }
-              elsif($line =~ /^EntryGuardPathBias [0-9]{1,10} [0-9]{1,10}\r{0,1}\n$/){}
-              elsif($line =~ /^EntryGuard /)
-               {if(!defined($verify))
-                 {warn('EntryGuardAddedBy '.$fingerprint.' not found!');
-                  exit;
-                 }
-                else
-                 {if($verify ne $fingerprint)
-                   {warn($verify.' '.$fingerprint);
-                    exit;
-                   }
-                  else
-                   {$entrys{$fingerprint}=1<<$entrys{$fingerprint};
-                    goto NEXT_ENTRY;
-                   }
-                 }
+           {while($state =~ /^(EntryGuard .*?\n)(?:EntryGuard |BWHistoryReadEnds $p_date_time\r{0,1}\n|TorVersion Tor $p_version|$)/msg)
+             {pos($state)-=length("\nEntryGuard ");
+              my $e=$1;
+              if($e !~ /^EntryGuard $p_nickname ([0-9A-F]{40})(?: (?:No){0,1}DirCache){0,1}(?: # $p_IP(?::$p_port){0,1}){0,1}\r{0,1}\n(EntryGuardDownSince $p_date_time $p_date_time\r{0,1}\n){0,1}(EntryGuardUnlistedSince $p_date_time\r{0,1}\n){0,1}EntryGuardAddedBy ([0-9A-F]{40}) $p_version $p_date_time\r{0,1}\n(?:EntryGuardPathBias(?: [0-9]{1,}[.][0-9]{6}){6}\r{0,1}\n){0,1}(?:EntryGuardPathUseBias(?: [0-9]{1,}[.][0-9]{6}){2}\r{0,1}\n){0,1}(.*){0,1}$/ms)
+               {warn("Malformed: ".$e);
+                exit();
                }
               else
-               {if($line =~ /^BWHistoryReadEnds [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\r{0,1}\n$/ || $line =~ /^TorVersion Tor [0-9a-z.() -]{1,}\r{0,1}\n$/)
-                 {$entrys{$fingerprint}=1<<$entrys{$fingerprint};
-                  last;
+               {if($1 ne $4) {die($1.' <> '.$4)}
+                elsif(defined($5) && '' ne $5)
+                 {warn('Malformed state:tail');
+                  exit();
                  }
                 else
-                 {warn('Unknown: '.$line);
-                  exit;
+                 {$entrys{$1}=0;
+                  if(defined($2)) { $entrys{$1}|=1; }
+                  if(defined($3)) { $entrys{$1}|=2; }
+                  $entrys{$1}=1<<$entrys{$1};
                  }
                }
              }
-           }
-          close(FILE);
-          if(scalar(keys(%entrys))<=$entry0)
-           {warn('NO available "EntryGuard" found in state file: '.$ARGV[$_]);
-            exit();
+            if(scalar(keys(%entrys))<=$entry1)
+             {warn('NO "EntryGuard" found in state file: '.$ARGV[$_]);
+              exit();
+             }
            }
          }
        }
       else
        {my $f;
-        if(!('-' eq $ARGV[$_] && ($f=*STDIN)) && !open($f,'<',$ARGV[$_]))
+        if(!open($f,'<',$ARGV[$_]))
          {warn('Can NOT open file: '.$ARGV[$_]);
           exit();
          }
         else
-         {if(defined(my $r=readline($f)))
-           {if($r !~ /^\@downloaded-at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
-             {warn('UnKnown LINE1: '.$r);
-              exit();
+         {binmode($f);
+          my $m;
+          if(!defined(mmap($m,0,PROT_READ,MAP_SHARED,$f,0)))
+           {die();}
+          else
+           {my $p;
+            if('router ' eq substr($m,0,7))
+             {$p_header='^';
+              $p="\nrouter ";
+             }
+            elsif('@downloaded-at ' eq substr($m,0,15))
+             {$p_header="^\@downloaded-at $p_date_time\n\@source \"$p_IP\"\n(?:\@purpose bridge\n){0,1}";
+              $p="\n\@downloaded-at ";
              }
             else
-             {while(my $line=readline($f))
-               {if($line !~ /^\@downloaded-at /)
-                 {$r.=$line;
-                 }
-                else
-                 {if($line !~ /^\@downloaded-at ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})$/)
-                   {warn('UnKnown @downloaded-at: '.$line);
-                    exit();
-                   }
-                  else
-                   {parse($r);
-                    $r=$line;
-                   }
-                 }
-               }
-              parse($r);
+             {die('Malformed File Header');
              }
+            my $s=0;
+            my $b=length($p)-1;
+            my $e=$b;
+            while(-1!=($e=index($m,$p,$e)))
+             {$e+=1;
+              parse(substr($m,$s,$e-$s));
+              $s=$e;
+              $e+=$b;
+             }
+            parse(substr($m,$s));
+            if(1!=munmap($m)){die();}
            }
           close($f);
          }
@@ -275,7 +306,7 @@ else
       exit();
      }
     else
-     {my %ip_not_found;
+     {my @ip_not_found;
       foreach(keys(%ip))
        {if(exists($_{$_})){}
         elsif(exists($ips{$_}))
@@ -285,12 +316,12 @@ else
           delete($ip{$_});
          }
         else
-         {$ip_not_found{$_}=0;
+         {push(@ip_not_found,$_);
           delete($ip{$_});
          }
        }
-      if('o' ne substr($cmd,1,1) && 0!=scalar(keys(%ip_not_found)))
-       {warn('Not_Found: '."\n".join("\n",keys(%ip_not_found)));
+      if('g' ne substr($cmd,1,1) && 0!=scalar(@ip_not_found))
+       {warn('Not_Found: '."\n".join("\n",@ip_not_found));
        }
       else
        {undef(%ips);
@@ -311,7 +342,7 @@ else
            }
          }
         elsif('i' eq $cmd || 'its' eq $cmd || 'itS' eq $cmd)
-         {foreach(keys(%_))
+         {foreach(sort{ $_{$b}[1] <=> $_{$a}[1] || $b cmp $a }keys(%_))
            {if('i' eq $cmd)
              {print($_."\n");
              }
@@ -327,69 +358,67 @@ else
              }
            }
          }
-        elsif('s' eq $cmd || 'so' eq $cmd || 'S' eq $cmd || 'So' eq $cmd)
+        elsif('s' eq $cmd || 'sg' eq $cmd || 'S' eq $cmd || 'Sg' eq $cmd)
          {if(0==scalar(keys(%ip)))
            {warn('NO IP defined!');
             exit();
            }
           else
-           {foreach(keys(%ip))
-             {state($_,$cmd);
+           {foreach(sort(keys(%ip)))
+             {state($_,substr($cmd,0,1));
              }
            }
          }
-        elsif('t' eq $cmd)
+        elsif('t' eq $cmd || 'tg' eq $cmd)
          {$_= 0==scalar(keys(%ip)) ? \%_ : \%ip ;
           foreach(sort{ $_{$a}[1] <=> $_{$b}[1] || $a cmp $b }(keys(%$_)))
            {print($_{$_}[0]);
            }
          }
-        elsif($cmd =~ /^e([0-9]{1,2})(?:n|t[sS]{0,1}){0,1}$/)
-         {if(0==scalar(keys(%entrys)))
+        elsif($cmd =~ /^e([0-9]{1,2})(g){0,1}(n|t[sS]{0,1}){0,1}$/)
+         {if(1>scalar(keys(%entrys)))
            {warn('state file NOT defined!');
             exit();
            }
           else
-           {my $mask=$1;
-            if($cmd =~ /^e[0-9]{1,2}n$/)
-             {my $n=0;
-              while(my($k,$v)=each(%entrys))
-               {if($v&$mask)
-                 {$n++;
-                 }
-               }
-              print($n."\n");
-             }
-            else
-             {foreach(keys(%entrys))
+           {my ($mask,$ignore,$c,$n)=($1,$2,$3,0);
+            my @notfound=();
+            foreach(sort(keys(%entrys)))
+             {if($entrys{$_}&$mask)
                {if(!exists($fingerprints{$_}))
-                 {warn('Not matched fingerprints: '.$_);
-                  exit();
+                 {push(@notfound,$_);
                  }
                 else
-                 {if($entrys{$_}&$mask)
-                   {foreach(keys(%{$fingerprints{$_}}))
-                     {if($cmd =~ /^e([0-9]{1,2})$/)
-                       {print($_."\n");
+                 {foreach(sort(keys(%{$fingerprints{$_}})))
+                   {if(defined($c))
+                     {if('n' eq $c)
+                       {$n++;
                        }
-                      else
+                      elsif('t' eq substr($c,0,1))
                        {if(tcp($_))
-                         {if($cmd =~ /^e[0-9]{1,2}t$/)
+                         {if('t' eq $c)
                            {print($_."\n");
                            }
                           else
-                           {if($cmd =~ /^e[0-9]{1,2}ts$/)
-                             {state($_,'s');
-                             }
-                            else
-                             {state($_,'S');
-                             }
+                           {state($_,substr($c,1,1));
                            }
                          }
                        }
                      }
+                    else
+                     {print($_."\n");
+                     }
                    }
                  }
+               }
+             }
+            if(0!=scalar(@notfound) && !defined($ignore))
+             {warn("Not matched fingerprints:\n".join("\n",@notfound));
+              exit();
+             }
+            else
+             {if(defined($c) && 'n' eq $c)
+               {print($n."\n");
                }
              }
            }
