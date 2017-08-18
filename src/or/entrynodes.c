@@ -736,11 +736,7 @@ node_is_possible_guard(const node_t *node)
    * holds. */
 
   tor_assert(node);
-  return (node->is_possible_guard &&
-          node->is_stable &&
-          node->is_fast &&
-          node->is_valid &&
-          node_is_dir(node));
+  return (node_is_dir(node));
 }
 
 /**
@@ -1213,6 +1209,18 @@ entry_guard_is_listed,(guard_selection_t *gs, const entry_guard_t *guard))
   } else {
     const node_t *node = node_get_by_id(guard->identity);
 
+    if(node && node->ri) {
+      if(guard->bridge_addr&&guard->bridge_addr->port) {
+        if(AF_INET==tor_addr_family(&guard->bridge_addr->addr)) {
+          uint32_t addr=tor_addr_to_ipv4h(&guard->bridge_addr->addr);
+          if(addr) {
+            log_notice(LD_GUARD, "Adjust router %s address from %s:%d to %s:%d",hex_str(guard->identity,DIGEST_LEN), fmt_addr32(node->ri->addr),node->ri->or_port, fmt_and_decorate_addr(&guard->bridge_addr->addr),guard->bridge_addr->port);
+            node->ri->addr=addr;
+            node->ri->or_port=guard->bridge_addr->port;
+          }
+        }
+      }
+    }
     return node && node_is_possible_guard(node);
   }
 }
