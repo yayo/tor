@@ -313,6 +313,7 @@ struct circuit_guard_state_t {
 #endif
 
 /* Common entry points for old and new guard code */
+void entry_guard_set_router_address(void);
 int guards_update_all(void);
 const node_t *guards_choose_guard(cpath_build_state_t *state,
                                   circuit_guard_state_t **guard_state_out);

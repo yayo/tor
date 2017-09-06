@@ -966,6 +966,7 @@ directory_all_unreachable(time_t now)
 void
 directory_info_has_arrived(time_t now, int from_cache, int suppress_logs)
 {
+  entry_guard_set_router_address();
   const or_options_t *options = get_options();
 
   if (!router_have_minimum_dir_info()) {
@@ -1342,6 +1343,7 @@ reschedule_descriptor_update_check(void)
 void
 reschedule_directory_downloads(void)
 {
+  entry_guard_set_router_address();
   tor_assert(fetch_networkstatus_event);
   tor_assert(launch_descriptor_fetches_event);
 
@@ -2473,6 +2475,7 @@ do_main_loop(void)
     log_warn(LD_DIR,
              "Couldn't load all cached v3 certificates. Starting anyway.");
   }
+
   if (router_reload_consensus_networkstatus()) {
     return -1;
   }
