@@ -3871,7 +3871,7 @@ router_add_to_routerlist(routerinfo_t *router, const char **msg,
     /* Only check the descriptor digest against the network statuses when
      * we are receiving in response to a fetch. */
 
-    if (!signed_desc_digest_is_recognized(&router->cache_info) &&
+    if (NULL=="KEEP UNLISTED DESCRIPTORS" && !signed_desc_digest_is_recognized(&router->cache_info) &&
         !routerinfo_is_a_configured_bridge(router)) {
       /* We asked for it, so some networkstatus must have listed it when we
        * did.  Save it if we're a cache in case somebody else asks for it. */
@@ -3900,7 +3900,7 @@ router_add_to_routerlist(routerinfo_t *router, const char **msg,
     }
   }
 
-  if (router->purpose == ROUTER_PURPOSE_GENERAL &&
+  if (NULL=="KEEP UNLISTED DESCRIPTORS" && router->purpose == ROUTER_PURPOSE_GENERAL &&
       consensus && !in_consensus && !authdir) {
     /* If it's a general router not listed in the consensus, then don't
      * consider replacing the latest router with it. */
@@ -3916,7 +3916,7 @@ router_add_to_routerlist(routerinfo_t *router, const char **msg,
    * recognize it as one of our currently configured bridges, drop the
    * descriptor. Otherwise we could end up using it as one of our entry
    * guards even if it isn't in our Bridge config lines. */
-  if (router->purpose == ROUTER_PURPOSE_BRIDGE && from_cache &&
+  if (NULL=="KEEP BRIDGE DESCRIPTORS" && router->purpose == ROUTER_PURPOSE_BRIDGE && from_cache &&
       !authdir_mode_bridge(options) &&
       !routerinfo_is_a_configured_bridge(router)) {
     log_info(LD_DIR, "Dropping bridge descriptor for %s because we have "
