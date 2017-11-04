@@ -1117,7 +1117,7 @@ directory_fetches_from_authorities(const or_options_t *options)
   uint32_t addr;
   int refuseunknown;
   if (options->FetchDirInfoEarly)
-    return 1;
+    return 0;
   if (options->BridgeRelay == 1)
     return 0;
   if (server_mode(options) &&

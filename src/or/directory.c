@@ -675,7 +675,7 @@ directory_get_from_dirserver,(
    * there's no point in falling back to the authorities in this case. */
   if (rs) {
     const dir_indirection_t indirection =
-      get_via_tor ? DIRIND_ANONYMOUS : DIRIND_ONEHOP;
+      have_completed_a_circuit() ? DIRIND_ANONYMOUS : DIRIND_ONEHOP;
     directory_request_t *req = directory_request_new(dir_purpose);
     directory_request_set_routerstatus(req, rs);
     directory_request_set_router_purpose(req, router_purpose);
@@ -2799,8 +2799,7 @@ handle_response_fetch_desc(dir_connection_t *conn,
    * and we don't really want to add that to our routerlist. */
   if (which || (conn->requested_resource &&
                 (!strcmpstart(conn->requested_resource, "all") ||
-                 (!strcmpstart(conn->requested_resource, "authority") &&
-                  get_options()->UseBridges)))) {
+                 !strcmpstart(conn->requested_resource, "authority") ))) {
     /* as we learn from them, we remove them from 'which' */
     if (was_ei) {
       router_load_extrainfo_from_string(body, NULL, SAVED_NOWHERE, which,
