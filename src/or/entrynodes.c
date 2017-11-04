@@ -1198,6 +1198,125 @@ remove_guard_from_confirmed_and_primary_lists(guard_selection_t *gs,
   }
 }
 
+/*
+static void digest_addr_port2rs(const char *rsa_id,const char *addr,const uint16_t port,routerstatus_t *rs)
+ {struct in_addr a;
+  base16_decode(rs->identity_digest,sizeof(rs->identity_digest),rsa_id,strlen(rsa_id));
+  tor_inet_aton(addr,&a);
+  rs->addr=ntohl(a.s_addr);
+  rs->or_port=port;
+ }
+*/
+
+static void trusteddirserver2rs(const dir_server_t *d,routerstatus_t *rs)
+ {memcpy(rs->identity_digest,d->digest,sizeof(rs->identity_digest));
+  rs->addr=d->addr;
+  rs->or_port=d->or_port;
+ }
+
+static void download_cacheds(const routerstatus_t *rs,const entry_guard_t *g,const uint8_t p,const char* s)
+ {tor_addr_port_t a;
+  int t=-1;
+  directory_request_t *req = directory_request_new(p);
+  if(NULL==rs)
+   {t=DIRIND_ONEHOP;
+    memcpy(&a.addr,&g->bridge_addr->addr,sizeof(tor_addr_t));
+    a.port = g->bridge_addr->port;
+    directory_request_set_or_addr_port(req,&a);
+    directory_request_set_directory_id_digest(req,g->identity);
+   }
+  else
+   {t=DIRIND_ANONYMOUS;
+    directory_request_set_routerstatus(req,rs);
+   }
+  directory_request_set_router_purpose(req,ROUTER_PURPOSE_GENERAL);
+  directory_request_set_indirection(req,t);
+  directory_request_set_resource(req,s);
+  directory_initiate_request(req);
+  directory_request_free(req);
+ }
+
+void entry_guard_set_router_address(void)
+ {for(int i1=0;i1<guard_contexts->num_used;i1++)
+   {const guard_selection_t * gs=guard_contexts->list[i1];
+    for(int i2=0;i2<gs->sampled_entry_guards->num_used;i2++)
+     {const entry_guard_t *guard=gs->sampled_entry_guards->list[i2];
+      uint32_t addr;
+      if(guard->bridge_addr&&guard->bridge_addr->port&&(addr=tor_addr_to_ipv4h(&guard->bridge_addr->addr)))
+       {const node_t *node = node_get_by_id(guard->identity);
+        if(!node)
+         {log_warn(LD_DIR,"HERE21 f 29605");
+// /tor/server/authority.z
+          download_cacheds(NULL,guard,DIR_PURPOSE_FETCH_SERVERDESC,"authority.z"); /* entry */
+         }
+        else
+         {if(node->ri)
+           {if(AF_INET==tor_addr_family(&guard->bridge_addr->addr))
+             {log_notice(LD_GUARD, "Adjust router %s address from %s:%d to %s:%d",hex_str(guard->identity,DIGEST_LEN), fmt_addr32(node->ri->addr),node->ri->or_port, fmt_and_decorate_addr(&guard->bridge_addr->addr),guard->bridge_addr->port);
+              node->ri->addr=addr;
+              node->ri->or_port=guard->bridge_addr->port;
+
+              const smartlist_t *dir_s=router_get_trusted_dir_servers();
+              static int dir_i=0;
+              routerstatus_t r;
+              const routerstatus_t *rs;
+              networkstatus_t *ns=networkstatus_get_latest_consensus();
+              if(NULL==ns||!have_completed_a_circuit())
+               {rs=NULL;
+                static uint32_t last=0;
+                uint32_t now=time(NULL)/3600;
+                if(now>last)
+                 {log_warn(LD_DIR,"HERE22 29605 %p",ns);
+// /tor/status-vote/current/consensus.z
+                  download_cacheds(rs,guard,DIR_PURPOSE_FETCH_CONSENSUS,"ns"); /* cached-consensus */
+// /tor/server/all.z
+                  download_cacheds(rs,guard,DIR_PURPOSE_FETCH_SERVERDESC,"all.z"); /* cached-descriptors */
+                  last=now;
+                 }
+               }
+              else
+               {rs=&r;
+                trusteddirserver2rs(dir_s->list[dir_i++],(routerstatus_t *)rs);
+                if(dir_i>=dir_s->num_used) dir_i=0;
+                // rs=router_pick_trusteddirserver(V3_DIRINFO,PDS_IGNORE_FASCISTFIREWALL); // router_pick_directory_server
+                static uint32_t last=0;
+                uint32_t now=time(NULL)/3600;
+                if(ns->fresh_until<time(NULL)&&now>last)
+                 {log_warn(LD_DIR,"HERE24 29605 %p %p",ns,rs);
+                  download_cacheds(rs,guard,DIR_PURPOSE_FETCH_CONSENSUS,"ns");
+                  for(int i=0;i<dir_s->num_used;i++)
+                   {trusteddirserver2rs(dir_s->list[i],(routerstatus_t *)rs);
+                    download_cacheds(rs,guard,DIR_PURPOSE_FETCH_SERVERDESC,"all.z");
+                   }
+                  last=now;
+                 }
+               }
+              if(consensus_is_waiting_for_certs())
+               {tor_assert(smartlist_len(dir_s));
+                char *certs=alloca(3+(2*DIGEST_LEN+1)*smartlist_len(dir_s)+3);
+                memcpy(certs,"fp/",3);
+                char *p=certs+3;
+                for(int i=0;i<dir_s->num_used;i++)
+                  {const char *d=((const dir_server_t *)dir_s->list[i])->v3_identity_digest;
+                   if(!tor_digest_is_zero(d))
+                    {memcpy(p,hex_str(d,DIGEST_LEN),2*DIGEST_LEN);
+                     p+=2*DIGEST_LEN;
+                     *p++='+';
+                    }
+                  }
+                 memcpy(p-1,".z\0",3);
+                 log_warn(LD_DIR,"HERE23 29605 %s",certs);
+// curl -s -A '' --compressed --socks4a 127.0.0.1:9050 http://128.31.0.39:9131/tor/keys/fp/D586D18309DED4CD6D57C18FDB97EFA96D330566+14C131DFC5C6F93646BE72FA1401C02A8DF2E8B4+E8A9C45EDE6D711294FADF8E7951F4DE6CA56B58+ED03BB616EB2F60BEC80151114BB25CEF515B226+0232AF901C31A04EE9848595AF9BB7620D4C5B2E+49015F787433103580E3B66A1707A00E60F2D15B+EFCBE720AB3A82B99F9E953CD5BF50F7EEFC7B97+23D15D965BC35114467363C165C4F724B64B4F66.z | sed -ne 's/^fingerprint \([0-9A-F]\{40\}\)$/\1/p' | wc -l | grep '^8$'
+                 download_cacheds(rs,guard,DIR_PURPOSE_FETCH_CERTIFICATE,certs); /* cached-certs */
+                }
+             }
+           }
+         }
+       }
+     }
+   }
+ }
+
 /** Return true iff <b>guard</b> is currently "listed" -- that is, it
  * appears in the consensus, or as a configured bridge (as
  * appropriate) */
